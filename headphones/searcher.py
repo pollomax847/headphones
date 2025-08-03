@@ -127,23 +127,23 @@ def read_torrent_name(torrent_file, default_name=None):
         with open(torrent_file, "rb") as fp:
             torrent_info = bdecode(fp.read())
     except IOError as e:
-        logger.error("Unable to open torrent file: %s", torrent_file)
-        return
+        logger.error("Unable to open torrent file: %s. %s", torrent_file, e)
+        return default_name
 
-    # Read dictionary
-    if torrent_info:
-        try:
-            return torrent_info["info"]["name"]
-        except KeyError:
-            if default_name:
-                logger.warning("Couldn't get name from torrent file: %s. "
-                               "Defaulting to '%s'", e, default_name)
-            else:
-                logger.warning("Couldn't get name from torrent file: %s. No "
-                               "default given", e)
+    name = None
+    info = torrent_info.get(b'info')
+    if info:
+        raw_name = info.get(b'name')
+        if raw_name:
+            name = raw_name.decode(headphones.SYS_ENCODING, 'replace')
 
-    # Return default
-    return default_name
+    if not name:
+        if default_name:
+            logger.warning("Couldn't get name from torrent file: %s. Defaulting to '%s'", torrent_file, default_name)
+        else:
+            logger.warning("Couldn't get name from torrent file: %s. No default given", torrent_file)
+
+    return name or default_name
 
 
 def calculate_torrent_hash(link, data=None):
@@ -991,6 +991,8 @@ def send_to_downloader(data, result, album):
                             folder_name = read_torrent_name(
                                     download_path,
                                     result.title)
+                            if folder_name:
+                                logger.info('Torrent folder name: %s' % folder_name)
 
                             # Break for loop
                             break
