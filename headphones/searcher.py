@@ -1234,11 +1234,6 @@ def send_to_downloader(data, result, album):
         osx = notifiers.OSX_NOTIFY()
         osx.notify(f"Headphones Snatched", f"{artist} - {albumname}\nFrom {provider}, {name}")
 
-    if headphones.CONFIG.BOXCAR_ENABLED and headphones.CONFIG.BOXCAR_ONSNATCH:
-        logger.info("Sending Boxcar2 notification")
-        b2msg = 'From ' + provider + '<br></br>' + name
-        boxcar = notifiers.BOXCAR()
-        boxcar.notify('Headphones snatched: ' + title, b2msg, rgid)
     if headphones.CONFIG.EMAIL_ENABLED and headphones.CONFIG.EMAIL_ONSNATCH:
         logger.info("Sending Email notification")
         email = notifiers.Email()

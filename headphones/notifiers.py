@@ -849,35 +849,6 @@ class OSX_NOTIFY(object):
             return False
 
 
-class BOXCAR(object):
-    def __init__(self):
-        self.url = 'https://new.boxcar.io/api/notifications'
-
-    def notify(self, title, message, rgid=None):
-        try:
-            if rgid:
-                message += '<br></br><a href="https://musicbrainz.org/' \
-                           'release-group/%s">MusicBrainz</a>' % rgid
-
-            data = urllib.parse.urlencode({
-                'user_credentials': headphones.CONFIG.BOXCAR_TOKEN,
-                'notification[title]': title.encode('utf-8'),
-                'notification[long_message]': message.encode('utf-8'),
-                'notification[sound]': "done",
-                'notification[icon_url]': "https://raw.githubusercontent.com/rembo10/headphones/master/data/images"
-                                          "/headphoneslogo.png"
-            })
-
-            req = urllib.request.Request(self.url)
-            handle = urllib.request.urlopen(req, data)
-            handle.close()
-            return True
-
-        except urllib.error.URLError as e:
-            logger.warn('Error sending Boxcar2 Notification: %s' % e)
-            return False
-
-
 class SubSonicNotifier(object):
     def __init__(self):
         self.host = headphones.CONFIG.SUBSONIC_HOST

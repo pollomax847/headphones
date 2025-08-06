@@ -627,12 +627,6 @@ def doPostProcessing(albumid, albumpath, release, tracks, downloaded_track_list,
         osx = notifiers.OSX_NOTIFY()
         osx.notify(f"Headphones Processed", f"{pushmessage}\n{statusmessage}")
 
-    if headphones.CONFIG.BOXCAR_ENABLED:
-        logger.info("Sending Boxcar2 notification")
-        boxcar = notifiers.BOXCAR()
-        boxcar.notify('Headphones processed: ' + pushmessage,
-                      statusmessage, release['AlbumID'])
-
     if headphones.CONFIG.SUBSONIC_ENABLED:
         logger.info("Sending Subsonic update")
         subsonic = notifiers.SubSonicNotifier()
