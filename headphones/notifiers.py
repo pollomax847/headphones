@@ -840,77 +840,13 @@ class TwitterNotifier(object):
 
 
 class OSX_NOTIFY(object):
-    def __init__(self):
+    def notify(self, title, subtitle):
         try:
-            self.objc = __import__("objc")
-            self.AppKit = __import__("AppKit")
-        except:
-            logger.warn('OS X Notification: Cannot import objc or AppKit')
-            pass
-
-    def swizzle(self, cls, SEL, func):
-        old_IMP = getattr(cls, SEL, None)
-        if old_IMP is None:
-            old_IMP = cls.instanceMethodForSelector_(SEL)
-
-        def wrapper(self, *args, **kwargs):
-            return func(self, old_IMP, *args, **kwargs)
-
-        new_IMP = self.objc.selector(
-            wrapper,
-            selector=old_IMP.selector,
-            signature=old_IMP.signature
-        )
-        self.objc.classAddMethod(cls, SEL.encode(), new_IMP)
-
-    def notify(self, title, subtitle=None, text=None, sound=True, image=None):
-
-        try:
-            self.swizzle(
-                self.objc.lookUpClass('NSBundle'),
-                'bundleIdentifier',
-                self.swizzled_bundleIdentifier
-            )
-
-            NSUserNotification = self.objc.lookUpClass('NSUserNotification')
-            NSUserNotificationCenter = self.objc.lookUpClass(
-                'NSUserNotificationCenter')
-            NSAutoreleasePool = self.objc.lookUpClass('NSAutoreleasePool')
-
-            if not NSUserNotification or not NSUserNotificationCenter:
-                return False
-
-            pool = NSAutoreleasePool.alloc().init()
-
-            notification = NSUserNotification.alloc().init()
-            notification.setTitle_(title)
-            if subtitle:
-                notification.setSubtitle_(subtitle)
-            if text:
-                notification.setInformativeText_(text)
-            if sound:
-                notification.setSoundName_(
-                    "NSUserNotificationDefaultSoundName")
-            if image:
-                source_img = self.AppKit.NSImage.alloc().\
-                    initByReferencingFile_(image)
-                notification.setContentImage_(source_img)
-                # notification.set_identityImage_(source_img)
-            notification.setHasActionButton_(False)
-
-            notification_center = NSUserNotificationCenter.\
-                defaultUserNotificationCenter()
-            notification_center.deliverNotification_(notification)
-
-            del pool
-            return True
-
+            script = f'display notification "{subtitle}" with title "{title}"'
+            subprocess.run(["osascript", "-e", script])
         except Exception as e:
-            logger.warn('Error sending OS X Notification: %s' % e)
+            logger.warn(f"Error sending MacOS Notification: {e}")
             return False
-
-    def swizzled_bundleIdentifier(self, original, swizzled):
-        return 'ade.headphones.osxnotify'
 
 
 class BOXCAR(object):

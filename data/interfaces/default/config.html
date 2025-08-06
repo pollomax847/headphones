@@ -1145,18 +1145,9 @@
 
                             <fieldset>
                                 <div class="row checkbox left">
-                                    <input type="checkbox" class="bigcheck" name="osx_notify_enabled" id="osx_notify" value="1" ${config['osx_notify_enabled']} /><label for="osx_notify"><span class="option">OS X</span></label>
+                                    <input type="checkbox" class="bigcheck" name="osx_notify_enabled" id="osx_notify" value="1" ${config['osx_notify_enabled']} /><label for="osx_notify"><span class="option">MacOS</span></label>
                                 </div>
                                 <div id="osx_notify_options">
-                                    <div class="row">
-                                        <input type="text" id="osx_notify_reg" name="osx_notify_app" value="${config['osx_notify_app']}" size="50"><label>Register Notify App</label>
-                                    </div>
-                                    <div class="row">
-                                        <small>Enter the path/application name to be registered with the Notification Center, default is /Applications/Headphones</small>
-                                    </div>
-                                    <div class="row">
-                                        <input type="button" value="Register" id="osxnotifyregister"><label></label>
-                                    </div>
                                     <div class="row checkbox">
                                         <input type="checkbox" name="osx_notify_onsnatch" value="1" ${config['osx_notify_onsnatch']} /><label>Notify on snatch?</label>
                                     </div>

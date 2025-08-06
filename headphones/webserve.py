@@ -1369,7 +1369,6 @@ class WebInterface(object):
             "twitter_onsnatch": checked(headphones.CONFIG.TWITTER_ONSNATCH),
             "osx_notify_enabled": checked(headphones.CONFIG.OSX_NOTIFY_ENABLED),
             "osx_notify_onsnatch": checked(headphones.CONFIG.OSX_NOTIFY_ONSNATCH),
-            "osx_notify_app": headphones.CONFIG.OSX_NOTIFY_APP,
             "boxcar_enabled": checked(headphones.CONFIG.BOXCAR_ENABLED),
             "boxcar_onsnatch": checked(headphones.CONFIG.BOXCAR_ONSNATCH),
             "boxcar_token": headphones.CONFIG.BOXCAR_TOKEN,
@@ -1717,20 +1716,6 @@ class WebInterface(object):
             return "Tweet successful, check your twitter to make sure it worked"
         else:
             return "Error sending tweet"
-
-    @cherrypy.expose
-    def osxnotifyregister(self, app):
-        cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
-        from osxnotify import registerapp as osxnotify
-        result, msg = osxnotify.registerapp(app)
-        if result:
-            osx_notify = notifiers.OSX_NOTIFY()
-            osx_notify.notify('Registered', result, 'Success :-)')
-            logger.info(
-                'Registered %s, to re-register a different app, delete this app first' % result)
-        else:
-            logger.warn(msg)
-        return msg
 
     @cherrypy.expose
     def testPushover(self):

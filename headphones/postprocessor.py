@@ -623,15 +623,9 @@ def doPostProcessing(albumid, albumpath, release, tracks, downloaded_track_list,
         #twitter.notify_download(pushmessage)
 
     if headphones.CONFIG.OSX_NOTIFY_ENABLED:
-        from headphones import cache
-        c = cache.Cache()
-        album_art = c.get_artwork_from_cache(None, release['AlbumID'])
-        logger.info("Sending OS X notification")
-        osx_notify = notifiers.OSX_NOTIFY()
-        osx_notify.notify(release['ArtistName'],
-                          release['AlbumTitle'],
-                          statusmessage,
-                          image=album_art)
+        logger.info("Sending MacOS notification")
+        osx = notifiers.OSX_NOTIFY()
+        osx.notify(f"Headphones Processed", f"{pushmessage}\n{statusmessage}")
 
     if headphones.CONFIG.BOXCAR_ENABLED:
         logger.info("Sending Boxcar2 notification")
