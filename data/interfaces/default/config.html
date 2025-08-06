@@ -1027,22 +1027,6 @@
                                 </div>
                             </fieldset>
 
-                            <fieldset>
-                                <div class="row checkbox left">
-                                    <input type="checkbox" class="bigcheck" name="growl_enabled" id="growl" value="1" ${config['growl_enabled']} /><label for="growl"><span class="option">Growl</span></label>
-                                </div>
-                                <div id="growloptions">
-                                    <div class="row">
-                                        <label>Growl Host:Port</label><input type="text" name="growl_host" value="${config['growl_host']}" size="30">
-                                    </div>
-                                    <div class="row">
-                                        <label>Growl Password</label><input type="password" name="growl_password" value="${config['growl_password'] | h}" size="30">
-                                    </div>
-                                    <div class="row checkbox">
-                                        <input type="checkbox" name="growl_onsnatch" value="1" ${config['growl_onsnatch']} /><label>Notify on snatch?</label>
-                                    </div>
-                                </div>
-                            </fieldset>
 
                             <fieldset>
                                 <div class="row checkbox left">
@@ -1977,25 +1961,6 @@
                         }
                 });
 
-                if ($("#growl").is(":checked"))
-                        {
-                            $("#growloptions").show();
-                        }
-                else
-                        {
-                            $("#growloptions").hide();
-                        }
-
-                $("#growl").click(function(){
-                        if ($("#growl").is(":checked"))
-                        {
-                            $("#growloptions").slideDown();
-                        }
-                        else
-                        {
-                            $("#growloptions").slideUp();
-                        }
-                });
 
                 if ($("#prowl").is(":checked"))
                         {

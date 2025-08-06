@@ -1183,10 +1183,6 @@ def send_to_downloader(data, result, album):
     provider = get_provider_name(result.provider)
     name = folder_name if folder_name else None
 
-    if headphones.CONFIG.GROWL_ENABLED and headphones.CONFIG.GROWL_ONSNATCH:
-        logger.info("Sending Growl notification")
-        growl = notifiers.GROWL()
-        growl.notify(name, "Download started")
     if headphones.CONFIG.PROWL_ENABLED and headphones.CONFIG.PROWL_ONSNATCH:
         logger.info("Sending Prowl notification")
         prowl = notifiers.PROWL()
