@@ -160,6 +160,15 @@ def encode(albumPath):
 
         # Use multicore if enabled
         if headphones.CONFIG.ENCODER_MULTICORE:
+
+            # Set macOS multiprocessing method
+            try:
+                if headphones.SYS_PLATFORM == "darwin":
+                    multiprocessing.set_start_method('fork')
+            except RuntimeError:
+                # Already set, ignore
+                pass
+
             if headphones.CONFIG.ENCODER_MULTICORE_COUNT == 0:
                 processes = multiprocessing.cpu_count()
             else:
