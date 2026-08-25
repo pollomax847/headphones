@@ -480,6 +480,45 @@ class WebInterface(object):
             return {'result': 'failure'}
 
     @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def download_specific_track(self, AlbumID, user, filename, size=0):
+        # Grabs a single file out of a Soulseek result instead of the whole
+        # release. Doesn't touch the album's own Status: picking one track
+        # is a side errand, not a statement that the whole album is handled.
+        try:
+            size = int(size)
+        except (TypeError, ValueError):
+            size = 0
+
+        directory = filename.rsplit('\\', 1)[0] if '\\' in filename else ''
+        folder = directory.rsplit('\\', 1)[-1] if directory else directory
+        track_title = filename.rsplit('\\', 1)[-1]
+
+        try:
+            soulseek.download(user=user, filelist=[{'filename': filename, 'size': size}])
+        except Exception as e:
+            logger.error(f"Soulseek error, check server logs: {e}")
+            return {'result': 'failure'}
+
+        myDB = db.DBConnection()
+        myDB.action(
+            "INSERT INTO snatched VALUES (?, ?, ?, ?, DATETIME('NOW', 'localtime'), "
+            "?, ?, ?, ?)", [
+                AlbumID,
+                track_title,
+                size,
+                'http://' + user + folder,
+                'Snatched',
+                '{' + user + '}' + folder,
+                'soulseek',
+                None
+            ]
+        )
+        logger.info(f"Downloading single track '{track_title}' from {user} for album {AlbumID}")
+
+        return {'result': 'success'}
+
+    @cherrypy.expose
     def unqueueAlbum(self, AlbumID, ArtistID):
         logger.info("Marking album: " + AlbumID + "as skipped...")
         myDB = db.DBConnection()
@@ -940,39 +979,91 @@ class WebInterface(object):
             '''SELECT AlbumID, Title, Size, URL, DateAdded, Status, Kind, ifnull(FolderName, '?') FolderName FROM snatched WHERE Status NOT LIKE "Seed%" ORDER BY DateAdded DESC''')
         return serve_template(templatename="history.html", title="History", history=history)
 
+    @staticmethod
+    def _soulseek_download_activity(myDB):
+        # Live per-release transfer status from Nicotine+, keyed by folder
+        # name (username isn't stable: the autoqueue plugin swaps to a
+        # different peer when the original source dies).
+        live_by_folder = {release['folder']: release for release in soulseek.active_downloads()}
+
+        rows = myDB.select('''
+            SELECT s.AlbumID, s.Title, s.FolderName, s.Status AS SnatchedStatus, s.DateAdded,
+                   a.ArtistName
+            FROM snatched s
+            INNER JOIN albums a ON a.AlbumID = s.AlbumID
+            WHERE s.Kind='soulseek'
+            ORDER BY s.DateAdded DESC
+        ''')
+
+        activity = []
+        for row in rows:
+            match = re.search(r'\{(.*?)\}(.*?)$', row['FolderName'] or '')
+            folder = match.group(2) if match else (row['FolderName'] or '')
+            live = live_by_folder.get(folder)
+
+            activity.append({
+                'AlbumID': row['AlbumID'],
+                'Title': row['Title'],
+                'ArtistName': row['ArtistName'],
+                'DateAdded': row['DateAdded'],
+                # The status shown to the user (and used for cleanup) is
+                # whatever Nicotine+ currently reports when it's tracking
+                # the release live; the DB's own Status column (set by
+                # postprocessor.checkFolder on its own schedule) is only a
+                # fallback for releases Nicotine+ isn't tracking anymore.
+                'overall_status': live['overall_status'] if live else row['SnatchedStatus'],
+                'completed': live['completed'] if live else 0,
+                'total': live['total'] if live else 0,
+                'errored': live['errored'] if live else 0,
+                'size': live['size'] if live else 0,
+            })
+
+        return activity
+
     @cherrypy.expose
     def downloads(self):
         activity = []
 
         if headphones.CONFIG.SOULSEEK:
             myDB = db.DBConnection()
-            snatched_albums = {}
+            activity = self._soulseek_download_activity(myDB)
 
-            generic_disc_folder = re.compile(r'^(cd|disc|disk|dvd)\s*\d{1,3}$', re.IGNORECASE)
-
-            for row in myDB.select("SELECT AlbumID, Title, FolderName FROM snatched WHERE Kind='soulseek'"):
-                match = re.search(r'\{(.*?)\}(.*?)$', row['FolderName'] or '')
-                if match and not generic_disc_folder.match(match.group(2).strip()):
-                    # Keyed by folder alone (not username): when the Nicotine+
-                    # autoqueue plugin retries a dead transfer from a different
-                    # source, the file still belongs to the same release even
-                    # though who it's coming from has changed. Bare disc
-                    # folders ("CD1", "Disc 2", ...) are excluded because
-                    # they collide across unrelated multi-disc releases.
-                    snatched_albums[match.group(2)] = row
-
-            activity = soulseek.active_downloads()
-            status_order = {'Errored': 0, 'Downloading': 1, 'Finished': 2}
-
-            for release in activity:
-                snatched = snatched_albums.get(release['folder'])
-                release['AlbumID'] = snatched['AlbumID'] if snatched else None
-                release['Title'] = snatched['Title'] if snatched else release['folder']
-
+            status_order = {
+                'Errored': 0, 'Unprocessed': 0,
+                'Downloading': 1, 'Snatched': 1,
+                'Finished': 2, 'Processed': 2,
+            }
+            activity.sort(key=lambda release: release['DateAdded'], reverse=True)
             activity.sort(key=lambda release: status_order.get(release['overall_status'], 1))
 
         return serve_template(templatename="downloads.html", title="Downloads", activity=activity,
                                soulseek_enabled=headphones.CONFIG.SOULSEEK)
+
+    @cherrypy.expose
+    def clearDownloads(self, type=None):
+        myDB = db.DBConnection()
+
+        if type == 'orphaned':
+            # Snatched rows whose album was since deleted (e.g. the artist
+            # was removed): nothing left to link them to, they're pure clutter.
+            logger.info("Clearing orphaned Soulseek downloads (album no longer exists)")
+            myDB.action(
+                "DELETE FROM snatched WHERE Kind='soulseek' AND AlbumID NOT IN (SELECT AlbumID FROM albums)"
+            )
+        elif type == 'errored':
+            # Status='Unprocessed' only covers releases postprocessor has
+            # already caught up with; most rows showing as errored on the
+            # page are live Nicotine+ failures the DB doesn't know about
+            # yet, so recompute the same status the page displays.
+            activity = self._soulseek_download_activity(myDB)
+            errored_album_ids = {release['AlbumID'] for release in activity if release['overall_status'] == 'Errored'}
+            logger.info("Clearing %d errored Soulseek downloads", len(errored_album_ids))
+
+            for album_id in errored_album_ids:
+                myDB.action("DELETE FROM snatched WHERE Kind='soulseek' AND AlbumID=?", [album_id])
+            myDB.action("DELETE FROM snatched WHERE Kind='soulseek' AND Status='Unprocessed'")
+
+        raise cherrypy.HTTPRedirect("downloads")
 
     @cherrypy.expose
     def logs(self):

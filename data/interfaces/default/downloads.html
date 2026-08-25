@@ -8,6 +8,8 @@
 	<div id="subhead_container">
 		<div id="subhead_menu">
 			<a id="menu_link_delete" href="javascript:void(0)" onclick="location.reload()"><i class="fa fa-refresh"></i> Refresh</a>
+			<a id="menu_link_delete" href="clearDownloads?type=orphaned" title="Removes entries whose album was deleted"><i class="fa fa-trash-o"></i> Clear Orphaned</a>
+			<a id="menu_link_delete" href="clearDownloads?type=errored" title="Removes entries that errored out and are waiting to be re-searched"><i class="fa fa-trash-o"></i> Clear Errored</a>
 		</div>
 	</div>
 </%def>
@@ -24,24 +26,30 @@
 	<table class="display" id="downloads_table">
 		<thead>
 			<tr>
+				<th id="artist">Artist</th>
 				<th id="title">Album</th>
-				<th id="username">User</th>
 				<th id="status">Status</th>
 				<th id="progress">Progress</th>
 				<th id="size">Size</th>
+				<th id="dateadded">Date Added</th>
 			</tr>
 		</thead>
 		<tbody>
         %for release in activity:
         <%
-            if release['overall_status'] == 'Finished':
+            if release['overall_status'] in ('Finished', 'Processed'):
                 grade = 'A'
-            elif release['overall_status'] == 'Errored':
+            elif release['overall_status'] in ('Errored', 'Unprocessed'):
                 grade = 'X'
             else:
                 grade = 'L'
         %>
 			<tr class="grade${grade}">
+				<td id="artist">
+					% if release['ArtistName']:
+						${html_escape(release['ArtistName'], quote=True)}
+					% endif
+				</td>
 				<td id="title">
 					% if release['AlbumID']:
 						<a href="albumPage?AlbumID=${release['AlbumID']}">${html_escape(release['Title'], quote=True)}</a>
@@ -49,14 +57,17 @@
 						${html_escape(release['Title'], quote=True)}
 					% endif
 				</td>
-				<td id="username">${html_escape(release['username'], quote=True)}</td>
 				<td id="status">${release['overall_status']}</td>
-				<td id="progress">${release['completed']} / ${release['total']}
-					% if release['errored']:
-						(${release['errored']} errored)
+				<td id="progress">
+					% if release['total']:
+						${release['completed']} / ${release['total']}
+						% if release['errored']:
+							(${release['errored']} errored)
+						% endif
 					% endif
 				</td>
-				<td id="size">${helpers.bytes_to_mb(release['size'])}</td>
+				<td id="size">${helpers.bytes_to_mb(release['size']) if release['size'] else ''}</td>
+				<td id="dateadded">${release['DateAdded']}</td>
 			</tr>
 		%endfor
 		</tbody>

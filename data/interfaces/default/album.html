@@ -1,5 +1,6 @@
 <%inherit file="base.html" />
 <%!
+	import headphones
 	from headphones import db, helpers
 	myDB = db.DBConnection()
 %>
@@ -74,9 +75,22 @@
 							<th id="provider">Provider</th>
 							<th id="kind">Kind</th>
 							<th id="matches" title="Matches quality and/or seed settings.">Matches</th>
+							<th id="tracks"></th>
 						</tr>
 					</thead>
 					<tbody id="downloads_table_body">
+					</tbody>
+				</table>
+			</div>
+			<div id="choose_specific_track_dialog" title="Choose a specific track to download" style="display:none" class="configtable">
+				<table class="display" id="tracks_table">
+					<thead>
+						<tr>
+							<th id="tracktitle">Track</th>
+							<th id="tracksize">Size</th>
+						</tr>
+					</thead>
+					<tbody id="tracks_table_body">
 					</tbody>
 				</table>
 			</div>
@@ -126,6 +140,9 @@
 						<th id="location">Local File</th>
 						<th id="bitrate">Bit Rate</th>
 						<th id="format">Format</th>
+						% if headphones.CONFIG.SOULSEEK:
+							<th id="get"></th>
+						% endif
 					</tr>
 				</thead>
 				<tbody>
@@ -137,7 +154,7 @@
 						else:
 							grade = 'X'
 							location = ''
-							
+
 						if track['BitRate']:
 							bitrate = str(track['BitRate']/1000) + ' kbps'
 						else:
@@ -160,6 +177,13 @@
 						<td id="location">${location}</td>
 						<td id="bitrate">${bitrate}</td>
 						<td id="format">${format}</td>
+						% if headphones.CONFIG.SOULSEEK:
+							<td id="get">
+								% if not track['Location']:
+									<a href="javascript:void(0)" onclick="downloadTrack('${track['TrackTitle'].replace("'", "\\'")}')" title="Find and download just this track"><i class="fa fa-download"></i></a>
+								% endif
+							</td>
+						% endif
 					</tr>
 				%endfor
 				<%
@@ -177,6 +201,9 @@
 						<td id="location">${track['Location']}</td>
 						<td id="bitrate">${int(track['BitRate'])/1000} kbps</td>
 						<td id="format">${track['Format']}</td>
+						% if headphones.CONFIG.SOULSEEK:
+							<td id="get"></td>
+						% endif
 					</tr>
 					%endfor
 				%endif
@@ -238,7 +265,10 @@
 			feedback.fadeOut();
 			search_results = data
 			for( var i = 0, len = data.length; i < len; i++ ) {
-    			$('#downloads_table_body').append('<tr><td id="title"><a href="javascript:void(0)" onclick="downloadSpecificRelease('+i+')">'+data[i].title+'</a></td><td id="size"><span title='+data[i].size+'></span>'+(data[i].size / (1024*1024)).toFixed(2)+' MB</td><td id="provider">'+data[i].provider+'</td><td id="kind">'+data[i].kind+'</td><td id="matches">'+data[i].matches+'</td></tr>');
+				var tracksCell = (data[i].kind === 'soulseek' && data[i].files && data[i].files.length > 1)
+					? '<a href="javascript:void(0)" onclick="showTracks('+i+')">choose track</a>'
+					: '';
+    			$('#downloads_table_body').append('<tr><td id="title"><a href="javascript:void(0)" onclick="downloadSpecificRelease('+i+')">'+data[i].title+'</a></td><td id="size"><span title='+data[i].size+'></span>'+(data[i].size / (1024*1024)).toFixed(2)+' MB</td><td id="provider">'+data[i].provider+'</td><td id="kind">'+data[i].kind+'</td><td id="matches">'+data[i].matches+'</td><td id="tracks">'+tracksCell+'</td></tr>');
     		}
 			$('#downloads_table').dataTable({
 				"aoColumns": [
@@ -246,7 +276,8 @@
 					{"sType": "title-numeric"},
 					null,
 					null,
-					{"sType": "string"}
+					{"sType": "string"},
+					null
 				],
 				"aaSorting": [[ 4, 'desc']],
 				"bFilter": false,
@@ -276,6 +307,111 @@
 			feedback.fadeOut();
 			refreshSubmenu();
 			$("#choose_specific_download_dialog").dialog("close");
+		});
+	}
+
+	function showTracks(i) {
+		var release = search_results[i];
+		var files = release.files || [];
+
+		$('#tracks_table_body').empty();
+		for ( var j = 0, len = files.length; j < len; j++ ) {
+			var parts = files[j].filename.split('\\');
+			var name = parts[parts.length - 1];
+			var sizeMb = (files[j].size / (1024*1024)).toFixed(2);
+			$('#tracks_table_body').append('<tr><td id="tracktitle"><a href="javascript:void(0)" onclick="downloadSpecificTrack('+i+','+j+')">'+name+'</a></td><td id="tracksize">'+sizeMb+' MB</td></tr>');
+		}
+
+		$('#tracks_table').dataTable({
+			"bFilter": false,
+			"bInfo": false,
+			"bPaginate": false,
+			"bDestroy": true,
+			"aaSorting": []
+		});
+		$("#choose_specific_track_dialog").dialog({
+			width: "60%",
+			maxHeight: 500
+		});
+	}
+
+	function downloadSpecificTrack(i, j) {
+		var release = search_results[i];
+		var file = release.files[j];
+
+		ShowSpinner();
+		$.getJSON("download_specific_track?AlbumID=${album['AlbumID']}&user="+encodeURIComponent(release.user)+"&filename="+encodeURIComponent(file.filename)+"&size="+file.size, function(data) {
+			loader.remove();
+			feedback.fadeOut();
+			refreshSubmenu();
+			$("#choose_specific_track_dialog").dialog("close");
+		});
+	}
+
+	function downloadTrack(trackTitle) {
+		// Triggered from the track list directly: searches across every
+		// Soulseek result found for this album and offers only the files
+		// that look like this one specific track, instead of making the
+		// user dig through "Choose Specific Download" release by release.
+		ShowSpinner();
+		$.getJSON("choose_specific_download?AlbumID=${album['AlbumID']}", function(data) {
+			loader.remove();
+			feedback.fadeOut();
+			search_results = data;
+
+			var needle = trackTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+			var matches = [];
+
+			for ( var i = 0, len = data.length; i < len; i++ ) {
+				if ( data[i].kind !== 'soulseek' || !data[i].files ) continue;
+
+				for ( var j = 0, flen = data[i].files.length; j < flen; j++ ) {
+					var file = data[i].files[j];
+					var parts = file.filename.split('\\');
+					var name = parts[parts.length - 1];
+					var cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+					if ( needle && cleanName.indexOf(needle) !== -1 ) {
+						matches.push({user: data[i].user, filename: file.filename, size: file.size, name: name});
+					}
+				}
+			}
+
+			window.trackMatches = matches;
+			$('#tracks_table_body').empty();
+
+			if ( matches.length === 0 ) {
+				$('#tracks_table_body').append('<tr><td id="tracktitle" colspan="2">No matching Soulseek result found for this track. Try "Choose Specific Download" to browse full releases instead.</td></tr>');
+			} else {
+				for ( var k = 0; k < matches.length; k++ ) {
+					var sizeMb = (matches[k].size / (1024*1024)).toFixed(2);
+					$('#tracks_table_body').append('<tr><td id="tracktitle"><a href="javascript:void(0)" onclick="downloadTrackMatch('+k+')">'+matches[k].name+'</a> <small>('+matches[k].user+')</small></td><td id="tracksize">'+sizeMb+' MB</td></tr>');
+				}
+			}
+
+			$('#tracks_table').dataTable({
+				"bFilter": false,
+				"bInfo": false,
+				"bPaginate": false,
+				"bDestroy": true,
+				"aaSorting": []
+			});
+			$("#choose_specific_track_dialog").dialog({
+				width: "60%",
+				maxHeight: 500
+			});
+		});
+	}
+
+	function downloadTrackMatch(k) {
+		var match = window.trackMatches[k];
+
+		ShowSpinner();
+		$.getJSON("download_specific_track?AlbumID=${album['AlbumID']}&user="+encodeURIComponent(match.user)+"&filename="+encodeURIComponent(match.filename)+"&size="+match.size, function(data) {
+			loader.remove();
+			feedback.fadeOut();
+			refreshSubmenu();
+			$("#choose_specific_track_dialog").dialog("close");
 		});
 	}
 
