@@ -381,21 +381,24 @@
 			$('#tracks_table_body').empty();
 
 			if ( matches.length === 0 ) {
+				// A one-cell message row doesn't have a value for every
+				// column dataTables expects, so skip initializing it here --
+				// there's nothing to sort or paginate anyway.
 				$('#tracks_table_body').append('<tr><td id="tracktitle" colspan="2">No matching Soulseek result found for this track. Try "Choose Specific Download" to browse full releases instead.</td></tr>');
 			} else {
 				for ( var k = 0; k < matches.length; k++ ) {
 					var sizeMb = (matches[k].size / (1024*1024)).toFixed(2);
 					$('#tracks_table_body').append('<tr><td id="tracktitle"><a href="javascript:void(0)" onclick="downloadTrackMatch('+k+')">'+matches[k].name+'</a> <small>('+matches[k].user+')</small></td><td id="tracksize">'+sizeMb+' MB</td></tr>');
 				}
+				$('#tracks_table').dataTable({
+					"bFilter": false,
+					"bInfo": false,
+					"bPaginate": false,
+					"bDestroy": true,
+					"aaSorting": []
+				});
 			}
 
-			$('#tracks_table').dataTable({
-				"bFilter": false,
-				"bInfo": false,
-				"bPaginate": false,
-				"bDestroy": true,
-				"aaSorting": []
-			});
 			$("#choose_specific_track_dialog").dialog({
 				width: "60%",
 				maxHeight: 500
