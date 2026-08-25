@@ -261,11 +261,12 @@ class WebInterface(object):
     def removeArtist(self, ArtistID):
         myDB = db.DBConnection()
         namecheck = myDB.select('SELECT ArtistName from artists where ArtistID=?', [ArtistID])
+        artistname = None
         for name in namecheck:
             artistname = name['ArtistName']
-        try:
+        if artistname:
             logger.info("Deleting all traces of artist: " + artistname)
-        except TypeError:
+        else:
             logger.info("Deleting all traces of artist: null")
         myDB.action('DELETE from artists WHERE ArtistID=?', [ArtistID])
 

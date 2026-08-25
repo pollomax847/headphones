@@ -138,6 +138,9 @@ def getArtists():
         from headphones import importer
 
         for artistid in artistlist:
+            if myDB.action('SELECT * FROM blacklist WHERE ArtistID=?', [artistid]).fetchone():
+                logger.info("Artist ID '%s' is blacklisted (previously deleted), skipping Last.fm import", artistid)
+                continue
             importer.addArtisttoDB(artistid)
 
         logger.info("Imported %d new artists from Last.fm", len(artistlist))
@@ -167,6 +170,9 @@ def getTagTopArtists(tag, limit=50):
         from headphones import importer
 
         for artistid in artistlist:
+            if myDB.action('SELECT * FROM blacklist WHERE ArtistID=?', [artistid]).fetchone():
+                logger.info("Artist ID '%s' is blacklisted (previously deleted), skipping Last.fm import", artistid)
+                continue
             importer.addArtisttoDB(artistid)
 
         logger.debug("Added %d new artists from Last.fm", len(artistlist))

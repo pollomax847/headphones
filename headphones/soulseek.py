@@ -1,17 +1,83 @@
 from collections import defaultdict, namedtuple
+import fcntl
+import json
 import os
 import time
-import slskd_api
+
+try:
+    import slskd_api
+except ImportError:  # pragma: no cover - optional dependency handled at runtime
+    slskd_api = None
+
 import headphones
 from headphones import logger
-from datetime import datetime, timedelta
 
 Result = namedtuple('Result', ['title', 'size', 'user', 'provider', 'type', 'matches', 'bandwidth', 'hasFreeUploadSlot', 'queueLength', 'files', 'kind', 'url', 'folder'])
+
+# Downloads (not searches) are handed off to Nicotine+ via a small file-based
+# inbox, consumed by the "autoqueue" Nicotine+ plugin
+# (~/.local/share/nicotine/plugins/autoqueue). Nicotine+ does the actual
+# transfer and reports live transfer state back via NICOTINE_STATUS_FILE.
+NICOTINE_INBOX_DIR = os.path.expanduser('~/nicotine_inbox')
+NICOTINE_QUEUE_FILE = os.path.join(NICOTINE_INBOX_DIR, 'queue.json')
+NICOTINE_STATUS_FILE = os.path.join(NICOTINE_INBOX_DIR, 'status.json')
+
+# pynicotine.transfers.TransferStatus values that mean the transfer is dead
+# and won't finish on its own.
+NICOTINE_ERROR_STATUSES = {
+    'Cancelled', 'Filtered', 'User logged off', 'Connection closed',
+    'Connection timeout', 'Download folder error', 'Local file error',
+}
+
 
 def initialize_soulseek_client():
     host = headphones.CONFIG.SOULSEEK_API_URL
     api_key = headphones.CONFIG.SOULSEEK_API_KEY
     return slskd_api.SlskdClient(host=host, api_key=api_key)
+
+
+def _folder_name_from_virtual_path(virtual_path):
+    # Soulseek virtual paths are backslash-separated, e.g.
+    # "Music\Artist\Album\01 - Track.mp3". The album folder is the last
+    # component of the directory portion.
+    directory = virtual_path.rsplit('\\', 1)[0] if '\\' in virtual_path else ''
+    return directory.rsplit('\\', 1)[-1] if directory else directory
+
+
+def _append_to_nicotine_queue(entries):
+    if not entries:
+        return
+
+    os.makedirs(NICOTINE_INBOX_DIR, exist_ok=True)
+
+    with open(NICOTINE_QUEUE_FILE, 'a+') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0)
+        content = f.read()
+
+        try:
+            queue = json.loads(content) if content.strip() else []
+        except json.JSONDecodeError:
+            queue = []
+
+        queue.extend(entries)
+
+        f.seek(0)
+        f.truncate()
+        json.dump(queue, f)
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _read_nicotine_status():
+    if not os.path.exists(NICOTINE_STATUS_FILE):
+        return []
+
+    try:
+        with open(NICOTINE_STATUS_FILE) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.debug(f"Soulseek: failed to read Nicotine+ status file: {e}")
+        return []
 
     # Search logic, calling search and processing fucntions
 def search(artist, album, year, num_tracks, losslessOnly, allow_lossless, user_search_term):
@@ -129,124 +195,61 @@ def process_results(results, losslessOnly, allow_lossless, num_tracks, ignore_tr
 
 
 def download(user, filelist):
-    client = initialize_soulseek_client()
-    client.transfers.enqueue(username=user, files=filelist)
+    # Hand off to Nicotine+ (via the "autoqueue" plugin) instead of slskd:
+    # slskd is only used for searching here, Nicotine+ does the transfer.
+    entries = [[user, f['filename']] for f in filelist if f.get('filename')]
+    _append_to_nicotine_queue(entries)
 
 
 def download_completed():
-    client = initialize_soulseek_client()
-    all_downloads = client.transfers.get_all_downloads(includeRemoved=False)
+    transfers = _read_nicotine_status()
     album_completion_tracker = {}  # Tracks completion state of each album's songs
     album_errored_tracker = {}  # Tracks albums with errored downloads
 
-    # Anything older than 24 hours will be canceled
-    cutoff_time = datetime.now() - timedelta(hours=24)
+    for transfer in transfers:
+        album_part = _folder_name_from_virtual_path(transfer.get('virtual_path', ''))
+        status = transfer.get('status', '')
 
-    # Identify errored and completed albums
-    for download in all_downloads:
-        directories = download.get('directories', [])
-        for directory in directories:
-            album_part = directory.get('directory', '').split('\\')[-1]
-            files = directory.get('files', [])
-            for file_data in files:
-                state = file_data.get('state', '')
-                requested_at_str = file_data.get('requestedAt', '1900-01-01 00:00:00')
-                requested_at = parse_datetime(requested_at_str)
+        if album_part not in album_completion_tracker:
+            album_completion_tracker[album_part] = {'total': 0, 'completed': 0, 'errored': 0}
+            album_errored_tracker[album_part] = False
 
-                # Initialize or update album entry in trackers
-                if album_part not in album_completion_tracker:
-                    album_completion_tracker[album_part] = {'total': 0, 'completed': 0, 'errored': 0}
-                if album_part not in album_errored_tracker:
-                    album_errored_tracker[album_part] = False
+        album_completion_tracker[album_part]['total'] += 1
 
-                album_completion_tracker[album_part]['total'] += 1
+        if status == 'Finished':
+            album_completion_tracker[album_part]['completed'] += 1
+        elif status in NICOTINE_ERROR_STATUSES:
+            album_completion_tracker[album_part]['errored'] += 1
+            album_errored_tracker[album_part] = True
 
-                if 'Completed, Succeeded' in state:
-                    album_completion_tracker[album_part]['completed'] += 1
-                elif 'Completed, Errored' in state or requested_at < cutoff_time:
-                    album_completion_tracker[album_part]['errored'] += 1
-                    album_errored_tracker[album_part] = True  # Mark album as having errored downloads
-
-    # Identify errored albums
     errored_albums = {album for album, errored in album_errored_tracker.items() if errored}
-
-    # Cancel downloads for errored albums
-    for download in all_downloads:
-        directories = download.get('directories', [])
-        for directory in directories:
-            album_part = directory.get('directory', '').split('\\')[-1]
-            files = directory.get('files', [])
-            for file_data in files:
-                if album_part in errored_albums:
-                    # Extract 'id' and 'username' for each file to cancel the download
-                    file_id = file_data.get('id', '')
-                    username = file_data.get('username', '')
-                    success = client.transfers.cancel_download(username, file_id)
-                    if not success:
-                        logger.debug(f"Soulseek failed to cancel download for file ID: {file_id}")
-
-    # Clear completed/canceled/errored stuff from client downloads
-    try:
-        client.transfers.remove_completed_downloads()
-    except Exception as e:
-        logger.debug(f"Soulseek failed to remove completed downloads: {e}")
-
-    # Identify completed albums
     completed_albums = {album for album, counts in album_completion_tracker.items() if counts['total'] == counts['completed']}
 
-    # Return both completed and errored albums
     return completed_albums, errored_albums
 
 
 def download_completed_album(username, foldername):
-    client = initialize_soulseek_client()
-    downloads = client.transfers.get_downloads(username)
-
-    # Anything older than 24 hours will be canceled
-    cutoff_time = datetime.now() - timedelta(hours=24)
+    transfers = _read_nicotine_status()
 
     total_count = 0
     completed_count = 0
     errored_count = 0
-    file_ids = []
 
-    # Identify errored and completed album
-    directories = downloads.get('directories', [])
-    for directory in directories:
-        album_part = directory.get('directory', '').split('\\')[-1]
-        if album_part == foldername:
-            files = directory.get('files', [])
-            for file_data in files:
-                state = file_data.get('state', '')
-                requested_at_str = file_data.get('requestedAt', '1900-01-01 00:00:00')
-                requested_at = parse_datetime(requested_at_str)
+    for transfer in transfers:
+        if transfer.get('username') != username:
+            continue
+        if _folder_name_from_virtual_path(transfer.get('virtual_path', '')) != foldername:
+            continue
 
-                total_count += 1
-                file_id = file_data.get('id', '')
-                file_ids.append(file_id)
+        total_count += 1
+        status = transfer.get('status', '')
 
-                if 'Completed, Succeeded' in state:
-                    completed_count += 1
-                elif 'Completed, Errored' in state or requested_at < cutoff_time:
-                    errored_count += 1
-            break
+        if status == 'Finished':
+            completed_count += 1
+        elif status in NICOTINE_ERROR_STATUSES:
+            errored_count += 1
 
-    completed = True if completed_count == total_count else False
-    errored = True if errored_count else False
-
-    # Cancel downloads for errored album
-    if errored:
-        for file_id in file_ids:
-            try:
-                success = client.transfers.cancel_download(username, file_id, remove=True)
-            except Exception as e:
-                logger.debug(f"Soulseek failed to cancel download for folder with file ID: {foldername} {file_id}")
+    completed = total_count > 0 and completed_count == total_count
+    errored = errored_count > 0
 
     return completed, errored
-
-
-def parse_datetime(datetime_string):
-    # Parse the datetime api response
-    if '.' in datetime_string:
-        datetime_string = datetime_string[:datetime_string.index('.')+7]
-    return datetime.strptime(datetime_string, '%Y-%m-%dT%H:%M:%S.%f')
