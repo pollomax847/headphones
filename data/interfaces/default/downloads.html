@@ -1,0 +1,105 @@
+<%inherit file="base.html"/>
+<%!
+	from headphones import helpers
+	from html import escape as html_escape
+%>
+
+<%def name="headerIncludes()">
+	<div id="subhead_container">
+		<div id="subhead_menu">
+			<a id="menu_link_delete" href="javascript:void(0)" onclick="location.reload()"><i class="fa fa-refresh"></i> Refresh</a>
+		</div>
+	</div>
+</%def>
+
+<%def name="body()">
+	<div id="paddingheader">
+		<h1 class="clearfix"><i class="fa fa-download"></i> Downloads</h1>
+	</div>
+	% if not soulseek_enabled:
+		<div class="config">Soulseek is not enabled. Turn it on under Config &gt; Search Providers to see Nicotine+ download activity here.</div>
+	% elif not activity:
+		<div class="config">No active or recent Soulseek downloads.</div>
+	% else:
+	<table class="display" id="downloads_table">
+		<thead>
+			<tr>
+				<th id="title">Album</th>
+				<th id="username">User</th>
+				<th id="status">Status</th>
+				<th id="progress">Progress</th>
+				<th id="size">Size</th>
+			</tr>
+		</thead>
+		<tbody>
+        %for release in activity:
+        <%
+            if release['overall_status'] == 'Finished':
+                grade = 'A'
+            elif release['overall_status'] == 'Errored':
+                grade = 'X'
+            else:
+                grade = 'L'
+        %>
+			<tr class="grade${grade}">
+				<td id="title">
+					% if release['AlbumID']:
+						<a href="albumPage?AlbumID=${release['AlbumID']}">${html_escape(release['Title'], quote=True)}</a>
+					% else:
+						${html_escape(release['Title'], quote=True)}
+					% endif
+				</td>
+				<td id="username">${html_escape(release['username'], quote=True)}</td>
+				<td id="status">${release['overall_status']}</td>
+				<td id="progress">${release['completed']} / ${release['total']}
+					% if release['errored']:
+						(${release['errored']} errored)
+					% endif
+				</td>
+				<td id="size">${helpers.bytes_to_mb(release['size'])}</td>
+			</tr>
+		%endfor
+		</tbody>
+	</table>
+	% endif
+</%def>
+
+<%def name="headIncludes()">
+	<link rel="stylesheet" href="interfaces/default/css/data_table.css">
+</%def>
+
+<%def name="javascriptIncludes()">
+	<script src="js/libs/jquery.dataTables.min.js"></script>
+	<script>
+	var downloadsRefreshTimer;
+
+	function initThisPage() {
+		if ( $('#downloads_table').length ) {
+			$('#downloads_table').dataTable({
+				"bDestroy": true,
+				"oLanguage": {
+					"sLengthMenu":"Show _MENU_ items per page",
+					"sEmptyTable": " ",
+					"sInfo":"Showing _START_ to _END_ of _TOTAL_ items",
+					"sInfoEmpty":"Showing 0 to 0 of 0 items",
+					"sInfoFiltered":"(filtered from _MAX_ total items)"},
+				"iDisplayLength": 25,
+				"sPaginationType": "full_numbers",
+				"aaSorting": []
+			});
+			resetFilters("downloads");
+		}
+
+		clearInterval(downloadsRefreshTimer);
+		downloadsRefreshTimer = setInterval(function() {
+			if ( $('#downloads_table').length ) {
+				refreshTable();
+			}
+		}, 15000);
+	}
+	$(document).ready(function() {
+		initThisPage();
+		initActions();
+	});
+	</script>
+</%def>

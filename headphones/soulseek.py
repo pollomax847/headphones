@@ -253,3 +253,50 @@ def download_completed_album(username, foldername):
     errored = errored_count > 0
 
     return completed, errored
+
+
+def active_downloads():
+    # Aggregates the raw per-file Nicotine+ transfer status into one summary
+    # row per release, for display on the "Downloads" activity page.
+    transfers = _read_nicotine_status()
+    releases = {}
+
+    for transfer in transfers:
+        username = transfer.get('username', '')
+        folder = _folder_name_from_virtual_path(transfer.get('virtual_path', ''))
+        key = (username, folder)
+
+        if key not in releases:
+            releases[key] = {
+                'username': username,
+                'folder': folder,
+                'total': 0,
+                'completed': 0,
+                'errored': 0,
+                'size': 0,
+            }
+
+        release = releases[key]
+        release['total'] += 1
+        release['size'] += transfer.get('size', 0) or 0
+
+        status = transfer.get('status', '')
+        if status == 'Finished':
+            release['completed'] += 1
+        elif status in NICOTINE_ERROR_STATUSES:
+            release['errored'] += 1
+
+    result = []
+    for release in releases.values():
+        release['in_progress'] = release['total'] - release['completed'] - release['errored']
+
+        if release['errored']:
+            release['overall_status'] = 'Errored'
+        elif release['completed'] == release['total']:
+            release['overall_status'] = 'Finished'
+        else:
+            release['overall_status'] = 'Downloading'
+
+        result.append(release)
+
+    return result

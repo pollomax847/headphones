@@ -44,6 +44,7 @@ from headphones import (
     mb,
     notifiers,
     searcher,
+    soulseek,
 )
 from headphones.helpers import (
     checked,
@@ -938,6 +939,32 @@ class WebInterface(object):
         history = myDB.select(
             '''SELECT AlbumID, Title, Size, URL, DateAdded, Status, Kind, ifnull(FolderName, '?') FolderName FROM snatched WHERE Status NOT LIKE "Seed%" ORDER BY DateAdded DESC''')
         return serve_template(templatename="history.html", title="History", history=history)
+
+    @cherrypy.expose
+    def downloads(self):
+        activity = []
+
+        if headphones.CONFIG.SOULSEEK:
+            myDB = db.DBConnection()
+            snatched_albums = {}
+
+            for row in myDB.select("SELECT AlbumID, Title, FolderName FROM snatched WHERE Kind='soulseek'"):
+                match = re.search(r'\{(.*?)\}(.*?)$', row['FolderName'] or '')
+                if match:
+                    snatched_albums[(match.group(1), match.group(2))] = row
+
+            activity = soulseek.active_downloads()
+            status_order = {'Errored': 0, 'Downloading': 1, 'Finished': 2}
+
+            for release in activity:
+                snatched = snatched_albums.get((release['username'], release['folder']))
+                release['AlbumID'] = snatched['AlbumID'] if snatched else None
+                release['Title'] = snatched['Title'] if snatched else release['folder']
+
+            activity.sort(key=lambda release: status_order.get(release['overall_status'], 1))
+
+        return serve_template(templatename="downloads.html", title="Downloads", activity=activity,
+                               soulseek_enabled=headphones.CONFIG.SOULSEEK)
 
     @cherrypy.expose
     def logs(self):
