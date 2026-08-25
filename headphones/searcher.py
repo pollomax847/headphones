@@ -395,10 +395,9 @@ def do_sorted_search(album, new, losslessOnly, choose_specific_download=False):
         if BANDCAMP:
             bandcamp_results = searchBandcamp(album, new, albumlength)
 
-        # TODO: get this working
-        # if SOULSEEK:
-            # soulseek_results = searchSoulseek(album, new, losslessOnly,
-            #                                  albumlength, choose_specific_download)
+        if SOULSEEK:
+            soulseek_results = searchSoulseek(album, new, losslessOnly,
+                                              albumlength, choose_specific_download) or []
 
         results = nzb_results + torrent_results + bandcamp_results + soulseek_results
 

@@ -455,7 +455,10 @@ class WebInterface(object):
     @cherrypy.tools.json_out()
     def choose_specific_download(self, AlbumID):
         results = searcher.searchforalbum(AlbumID, choose_specific_download=True) or []
-        return list(map(asdict, results))
+        # NZB/torrent/bandcamp results are headphones.types.Result (a
+        # dataclass), but soulseek.search() returns its own richer Result
+        # namedtuple -- asdict() only understands the former.
+        return [result._asdict() if hasattr(result, '_asdict') else asdict(result) for result in results]
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
