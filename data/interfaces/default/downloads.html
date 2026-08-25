@@ -71,8 +71,6 @@
 <%def name="javascriptIncludes()">
 	<script src="js/libs/jquery.dataTables.min.js"></script>
 	<script>
-	var downloadsRefreshTimer;
-
 	function initThisPage() {
 		if ( $('#downloads_table').length ) {
 			$('#downloads_table').dataTable({
@@ -89,13 +87,6 @@
 			});
 			resetFilters("downloads");
 		}
-
-		clearInterval(downloadsRefreshTimer);
-		downloadsRefreshTimer = setInterval(function() {
-			if ( $('#downloads_table').length ) {
-				refreshTable();
-			}
-		}, 15000);
 	}
 	$(document).ready(function() {
 		initThisPage();

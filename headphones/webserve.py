@@ -948,16 +948,24 @@ class WebInterface(object):
             myDB = db.DBConnection()
             snatched_albums = {}
 
+            generic_disc_folder = re.compile(r'^(cd|disc|disk|dvd)\s*\d{1,3}$', re.IGNORECASE)
+
             for row in myDB.select("SELECT AlbumID, Title, FolderName FROM snatched WHERE Kind='soulseek'"):
                 match = re.search(r'\{(.*?)\}(.*?)$', row['FolderName'] or '')
-                if match:
-                    snatched_albums[(match.group(1), match.group(2))] = row
+                if match and not generic_disc_folder.match(match.group(2).strip()):
+                    # Keyed by folder alone (not username): when the Nicotine+
+                    # autoqueue plugin retries a dead transfer from a different
+                    # source, the file still belongs to the same release even
+                    # though who it's coming from has changed. Bare disc
+                    # folders ("CD1", "Disc 2", ...) are excluded because
+                    # they collide across unrelated multi-disc releases.
+                    snatched_albums[match.group(2)] = row
 
             activity = soulseek.active_downloads()
             status_order = {'Errored': 0, 'Downloading': 1, 'Finished': 2}
 
             for release in activity:
-                snatched = snatched_albums.get((release['username'], release['folder']))
+                snatched = snatched_albums.get(release['folder'])
                 release['AlbumID'] = snatched['AlbumID'] if snatched else None
                 release['Title'] = snatched['Title'] if snatched else release['folder']
 
