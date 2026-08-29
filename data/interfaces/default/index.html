@@ -27,20 +27,23 @@
 		   rounding the <img> directly renders an oval on non-square source
 		   photos. Force both the wrapping div and the image itself to a
 		   real 50x50 square and clip there instead. */
+		#artist_table th#albumart {
+			min-width: 90px;
+		}
 		#artist_table #artistImg {
-			width: 50px;
-			height: 50px;
+			width: 90px;
+			height: 90px;
 			overflow: hidden;
 			border-radius: 50%;
 			display: inline-block;
 		}
 		#artist_table #artistImg img.albumArt {
-			width: 50px;
-			height: 50px;
-			min-width: 50px;
-			min-height: 50px;
-			max-width: 50px;
-			max-height: 50px;
+			width: 90px;
+			height: 90px;
+			min-width: 90px;
+			min-height: 90px;
+			max-width: 90px;
+			max-height: 90px;
 			object-fit: cover;
 		}
 	</style>
@@ -59,7 +62,7 @@
                         "aTargets": [0],
                         "mData":"ArtistID",
                         "mRender": function ( data, type, full ) {
-                            return '<div id="artistImg"><img class="albumArt" height="50" width="50" alt="" id="'+ data + '" data-src="artwork/thumbs/artist/' + data + '"/></div>';
+                            return '<div id="artistImg"><img class="albumArt" height="90" width="90" alt="" id="'+ data + '" data-src="artwork/thumbs/artist/' + data + '"/></div>';
                         }
                     },
                     {
