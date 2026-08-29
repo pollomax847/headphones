@@ -80,10 +80,10 @@ function getImageLinks(elem,id,type,unveil) {
 		cache: true,
 		dataType: "json",
 		success: function(data){
-			if (!data) {
-				// Invalid response
-				return;
-			}
+			// No result (or a request-level failure below) still needs to
+			// show the placeholder rather than leaving the element with no
+			// src at all -- data may be null/empty when nothing was found.
+			data = data || {};
 
 			if (!data.thumbnail) {
 				var thumbnail = "interfaces/default/images/no-cover-artist.png";
@@ -98,6 +98,16 @@ function getImageLinks(elem,id,type,unveil) {
 				var artwork = data.artwork;
 			}
 
+			if (unveil) {
+				$(elem).attr("data-src", thumbnail);
+				$(elem).unveil();
+			}
+			else {
+				$(elem).attr("src", thumbnail);
+			}
+		},
+		error: function(){
+			var thumbnail = "interfaces/default/images/no-cover-artist.png";
 			if (unveil) {
 				$(elem).attr("data-src", thumbnail);
 				$(elem).unveil();
