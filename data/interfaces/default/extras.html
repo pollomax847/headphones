@@ -1,15 +1,84 @@
 <%inherit file="base.html" />
+
+<%def name="headerIncludes()">
+	<div id="subhead_container">
+		<div id="subhead_menu">
+			<a id="menu_link_refresh" href="updateCloud" title="Rebuild this list from your top artists"><i class="fa fa-refresh"></i> Refresh Suggestions</a>
+		</div>
+	</div>
+</%def>
+
 <%def name="body()">
 	<div class="title">
 		<h1 class="clearfix"><i class="fa fa-users"></i> Artists You Might Like</h1>
 	</div>
 	<div class="table_wrapper">
-		<div class="cloudtag">
-			<ul id="cloud">
+		% if not cloudlist:
+			<div class="config">No suggestions yet. Click "Refresh Suggestions" once you've added a few artists.</div>
+		% else:
+		<ul id="cloud" class="cloud-grid">
 			%for artist in cloudlist:
-				<li><a href="addArtist?artistid=${artist['ArtistID']}" class="tag${artist['Count']}">${artist['ArtistName']}</a></li>
+				<li class="cloud-card">
+					<a href="addArtist?artistid=${artist['ArtistID']}" title="Add ${artist['ArtistName']} to your library">
+						<img class="albumArt cloud-thumb" id="cloud-${artist['ArtistID']}" alt="" />
+						<span class="cloud-name">${artist['ArtistName']}</span>
+					</a>
+				</li>
 			%endfor
-			</ul>
-		</div>
+		</ul>
+		% endif
 	</div>
+</%def>
+
+<%def name="headIncludes()">
+	<style>
+		.cloud-grid {
+			list-style: none;
+			display: flex;
+			flex-wrap: wrap;
+			gap: 16px;
+			margin: 20px 0 0;
+			padding: 0;
+		}
+		.cloud-card { width: 90px; text-align: center; }
+		.cloud-card a { display: block; text-decoration: none; color: inherit; }
+		.cloud-thumb {
+			width: 90px;
+			height: 90px;
+			min-width: 90px;
+			min-height: 90px;
+			max-width: 90px;
+			max-height: 90px;
+			border-radius: 50%;
+			object-fit: cover;
+			object-position: center top;
+			background: #eee;
+		}
+		.cloud-name {
+			display: block;
+			margin-top: 6px;
+			font-size: 12px;
+			line-height: 1.2;
+			word-wrap: break-word;
+		}
+	</style>
+</%def>
+
+<%def name="javascriptIncludes()">
+	<script>
+	$(document).ready(function() {
+		$(".cloud-thumb").each(function() {
+			var img = $(this);
+			var id = img.attr("id").replace("cloud-", "");
+
+			getImageLinks(img, id, "artist");
+
+			$.getJSON("getFaceCropHint?ArtistID=" + encodeURIComponent(id), function(hint) {
+				if (hint && hint.y !== null && hint.y !== undefined) {
+					img.css("object-position", "center " + hint.y + "%");
+				}
+			});
+		});
+	});
+	</script>
 </%def>
