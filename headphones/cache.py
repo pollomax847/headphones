@@ -66,6 +66,15 @@ class Cache(object):
         self.info_content = None
 
     def _findfilesstartingwith(self, pattern, folder):
+        # str.startswith('') is True for every filename -- an empty/missing
+        # id (a blank AlbumID/ArtistID reaching here from a malformed
+        # caller) would otherwise match every file in the cache folder
+        # instead of none, which is exactly backwards for something used
+        # to decide what gets deleted.
+        if not pattern:
+            logger.warn('_findfilesstartingwith called with an empty pattern, refusing to match everything in %s', folder)
+            return []
+
         files = []
         if os.path.exists(folder):
             for fname in os.listdir(folder):
