@@ -46,7 +46,15 @@ def request_lastfm(method, **kwargs):
     logger.debug("Calling Last.fm method: %s", method)
     logger.debug("Last.fm call parameters: %s", kwargs)
 
-    data = request.request_json(ENTRY_POINT, timeout=TIMEOUT, params=kwargs, lock=lastfm_lock)
+    # Last.fm returns 404 (with its own error payload) for "no such
+    # artist/album/etc" -- a routine, expected result for anything obscure
+    # enough not to be in its catalog, not a real request failure. Without
+    # whitelisting it, every one of those logs as an ERROR alongside a
+    # generic "HTTP error" line, which is exactly what request_response()
+    # is for: let the 404 through so the actual Last.fm error payload
+    # below gets parsed and logged at debug level like any other miss.
+    data = request.request_json(ENTRY_POINT, timeout=TIMEOUT, params=kwargs, lock=lastfm_lock,
+                                whitelist_status_code=404)
 
     # Parse response and check for errors.
     if not data:
