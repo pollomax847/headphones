@@ -239,6 +239,14 @@
 				list.append(li);
 
 				getImageLinks(img, item.mbid, "artist");
+
+				// Bias the circular crop toward the actual detected face
+				// when we can find one, instead of a fixed top-ish guess.
+				$.getJSON("getFaceCropHint?ArtistID=" + encodeURIComponent(item.mbid), function(hint) {
+					if (hint && hint.y !== null && hint.y !== undefined) {
+						img.css("object-position", "center " + hint.y + "%");
+					}
+				});
 			}
 
 			$("#similarArtists").show();

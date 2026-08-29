@@ -1827,6 +1827,23 @@ class WebInterface(object):
         return image_dict
 
     @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def getFaceCropHint(self, ArtistID):
+        # Ensures the artist thumb is downloaded and cached locally (a
+        # no-op if it's already fresh) so there's an actual file on disk
+        # for face detection to read -- getImageLinks() above only ever
+        # hands back a remote URL, it never saves anything.
+        from headphones import cache, facecrop
+
+        c = cache.Cache()
+        thumb = c.get_thumb_from_cache(ArtistID=ArtistID)
+
+        if not thumb or thumb.startswith(('http://', 'https://')):
+            return {'y': None}
+
+        return {'y': facecrop.detect_face_center_y(thumb)}
+
+    @cherrypy.expose
     def twitterStep1(self):
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         tweet = notifiers.TwitterNotifier()
