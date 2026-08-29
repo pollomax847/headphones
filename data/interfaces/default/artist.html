@@ -157,6 +157,35 @@
 
 <%def name="headIncludes()">
 	<link rel="stylesheet" href="interfaces/default/css/data_table.css">
+	<style>
+		#similarArtists h2 { font-size: 16px; margin: 15px 0 8px; }
+		#similarArtistsList {
+			list-style: none;
+			display: flex;
+			flex-wrap: wrap;
+			gap: 12px;
+			margin: 0 0 15px;
+			padding: 0;
+		}
+		.similar-artist-card { width: 90px; text-align: center; }
+		.similar-artist-card a { display: block; text-decoration: none; color: inherit; }
+		.similar-artist-card img.albumArt {
+			width: 90px;
+			height: 90px;
+			border-radius: 50%;
+			object-fit: cover;
+		}
+		.similar-artist-card .similar-artist-name {
+			display: block;
+			margin-top: 6px;
+			font-size: 12px;
+			line-height: 1.2;
+			word-wrap: break-word;
+		}
+		.similar-artist-card a.add-similar-artist .similar-artist-name:before {
+			content: "+ ";
+		}
+	</style>
 </%def>
 
 <%def name="javascriptIncludes()">
@@ -182,7 +211,7 @@
 
 			for (var i = 0; i < data.length; i++) {
 				var item = data[i];
-				var li = $("<li>");
+				var li = $("<li>").addClass("similar-artist-card");
 				var link;
 
 				if (item.in_library) {
@@ -193,10 +222,15 @@
 						.attr("title", "Add " + item.name + " to your library")
 						.addClass("add-similar-artist");
 				}
-				link.text(item.name);
 
+				var img = $("<img>").addClass("albumArt").attr("alt", "");
+				var name = $("<span>").addClass("similar-artist-name").text(item.name);
+
+				link.append(img).append(name);
 				li.append(link);
 				list.append(li);
+
+				getImageLinks(img, item.mbid, "artist");
 			}
 
 			$("#similarArtists").show();
