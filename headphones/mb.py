@@ -269,7 +269,10 @@ def getArtist(artistid, extrasonly=False):
                 artistid, str(e)))
         mb_lock.snooze(5)
     except Exception as e:
-        pass
+        # Anything other than the expected WebServiceError -- a genuine bug
+        # here (bad MusicBrainz response shape, etc.) would otherwise fail
+        # this artist add/refresh with zero trace of why.
+        logger.error('Unexpected error retrieving artist information for artistid: %s (%s)', artistid, e)
 
     if not artist:
         return False
@@ -365,8 +368,8 @@ def getSeries(seriesid):
             'Attempt to retrieve series information from MusicBrainz failed for seriesid: %s (%s)' % (
                 seriesid, str(e)))
         mb_lock.snooze(5)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error('Unexpected error retrieving series information for seriesid: %s (%s)', seriesid, e)
 
     if not series:
         return False
