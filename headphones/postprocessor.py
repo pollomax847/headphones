@@ -102,6 +102,17 @@ def checkFolder():
             else:
                 logger.info("No folder name found for " + album['Title'])
 
+        # Soulseek downloads that have already resolved (succeeded, errored,
+        # rejected, cancelled) otherwise sit in slskd's own history forever,
+        # since nothing else ever clears them -- do it here rather than in a
+        # rarely-invoked standalone cleanup function nothing calls.
+        if headphones.CONFIG.SOULSEEK:
+            try:
+                success = soulseek.initialize_soulseek_client().transfers.remove_completed_downloads()
+                logger.debug(f"Soulseek: cleaned up completed downloads (success={success})")
+            except Exception as e:
+                logger.debug(f"Soulseek failed to clean up completed downloads: {e}")
+
     logger.debug("Checking download folder finished.")
 
 
