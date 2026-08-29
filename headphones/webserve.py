@@ -894,6 +894,18 @@ class WebInterface(object):
             else:
                 artistsToAdd.append(ArtistID)
         if len(artistsToAdd) > 0:
+            # Same guard as the Last.fm import paths: a blacklisted (i.e.
+            # deliberately deleted) artist shouldn't come back just because
+            # its checkbox was still on a stale page when this was submitted.
+            blacklisted = {
+                row['ArtistID'] for row in myDB.select(
+                    "SELECT ArtistID FROM blacklist WHERE ArtistID IN (%s)" %
+                    ','.join('?' * len(artistsToAdd)), artistsToAdd
+                )
+            }
+            artistsToAdd = [a for a in artistsToAdd if a not in blacklisted]
+
+        if len(artistsToAdd) > 0:
             logger.debug("Refreshing artists: %s" % artistsToAdd)
             threading.Thread(target=importer.addArtistIDListToDB, args=[artistsToAdd]).start()
         raise cherrypy.HTTPRedirect("home")
