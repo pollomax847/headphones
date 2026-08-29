@@ -1787,6 +1787,11 @@ class WebInterface(object):
         return info_dict
 
     @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def getSimilarArtists(self, ArtistID):
+        return lastfm.get_similar_for_artist(ArtistID)
+
+    @cherrypy.expose
     def getArtwork(self, ArtistID=None, AlbumID=None):
 
         from headphones import cache

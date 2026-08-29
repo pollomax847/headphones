@@ -49,6 +49,10 @@
 		<div id="artistBio"></div>
 	</div>
 	<ul id="artistCalendar" style="display:none;"></ul>
+	<div id="similarArtists" style="display:none;">
+		<h2>Similar Artists</h2>
+		<ul id="similarArtistsList"></ul>
+	</div>
 	<form action="markAlbums" method="get" id="markAlbums">
 	<input type="hidden" name="ArtistID" value=${artist['ArtistID']}>
 	<div id="markalbum">Mark selected albums as
@@ -163,6 +167,40 @@
 		var id = "${artist['ArtistID']}";
 		var elem = $("#artistBio");
 		getInfo(elem,id,'artist');
+	}
+
+	function getSimilarArtists() {
+		var id = "${artist['ArtistID']}";
+
+		$.getJSON("getSimilarArtists?ArtistID=" + id, function(data) {
+			if (!data || data.length === 0) {
+				return;
+			}
+
+			var list = $("#similarArtistsList");
+			list.empty();
+
+			for (var i = 0; i < data.length; i++) {
+				var item = data[i];
+				var li = $("<li>");
+				var link;
+
+				if (item.in_library) {
+					link = $("<a>").attr("href", "artistPage?ArtistID=" + encodeURIComponent(item.mbid));
+				} else {
+					link = $("<a>")
+						.attr("href", "addArtist?artistid=" + encodeURIComponent(item.mbid))
+						.attr("title", "Add " + item.name + " to your library")
+						.addClass("add-similar-artist");
+				}
+				link.text(item.name);
+
+				li.append(link);
+				list.append(li);
+			}
+
+			$("#similarArtists").show();
+		});
 	}
 
 	<%
@@ -315,6 +353,7 @@
 		initActions();
 		initThisPage();
 		getArtistBio();
+		getSimilarArtists();
 		if( ${songkick_enabled} ){
       		getArtistsCalendar();
     	}

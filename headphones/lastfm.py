@@ -176,3 +176,40 @@ def getTagTopArtists(tag, limit=50):
             importer.addArtisttoDB(artistid)
 
         logger.debug("Added %d new artists from Last.fm", len(artistlist))
+
+
+def get_similar_for_artist(artist_id, limit=10):
+    # Similar artists for one specific artist (Last.fm's own "Similar
+    # Artists" tab), as opposed to getSimilar() above which builds one
+    # cloud out of the top 10 artists in the whole library.
+    if not headphones.CONFIG.LASTFM_APIKEY:
+        return []
+
+    data = request_lastfm("artist.getsimilar", mbid=artist_id, limit=limit)
+
+    if not data or "similarartists" not in data:
+        return []
+
+    myDB = db.DBConnection()
+    known_ids = {row["ArtistID"] for row in myDB.select("SELECT ArtistID from artists")}
+
+    results = []
+    for artist in data["similarartists"].get("artist", []):
+        mbid = artist.get("mbid")
+        name = artist.get("name")
+        if not mbid or not name:
+            continue
+
+        try:
+            match = float(artist.get("match", 0))
+        except (TypeError, ValueError):
+            match = 0.0
+
+        results.append({
+            "name": name,
+            "mbid": mbid,
+            "match": match,
+            "in_library": mbid in known_ids,
+        })
+
+    return results
