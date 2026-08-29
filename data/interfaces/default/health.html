@@ -1,0 +1,108 @@
+<%inherit file="base.html"/>
+<%!
+	from headphones import helpers
+%>
+
+<%def name="headerIncludes()">
+	<div id="subhead_container">
+		<div id="subhead_menu">
+			<a id="menu_link_delete" href="javascript:void(0)" onclick="location.reload()"><i class="fa fa-refresh"></i> Refresh</a>
+			<a id="menu_link_delete" href="checkpointDatabase" title="Folds the WAL file back into the main database now instead of waiting for the next scheduled pass"><i class="fa fa-database"></i> Checkpoint Database Now</a>
+		</div>
+	</div>
+</%def>
+
+<%def name="body()">
+	<div id="paddingheader">
+		<h1 class="clearfix"><i class="fa fa-heartbeat"></i> Health</h1>
+	</div>
+
+	<div class="health-grid">
+		<div class="health-card">
+			<h3>Database</h3>
+			<table class="health-table">
+				<tr><td>Main file</td><td>${helpers.bytes_to_mb(db_size)}</td></tr>
+				<tr class="${'health-warn' if wal_size > 500*1024*1024 else ''}">
+					<td>WAL file</td>
+					<td>${helpers.bytes_to_mb(wal_size)}</td>
+				</tr>
+			</table>
+			% if wal_size > 500*1024*1024:
+				<p class="health-note">The WAL file is large enough to slow down startup and requests. It's checkpointed automatically every 6 hours, or click "Checkpoint Database Now" above.</p>
+			% endif
+		</div>
+
+		<div class="health-card">
+			<h3>Soulseek (slskd)</h3>
+			% if not soulseek_enabled:
+				<p>Soulseek is not enabled.</p>
+			% elif slskd_status is None:
+				<p>Unknown.</p>
+			% elif slskd_status.get('error'):
+				<p class="health-bad">Unreachable: ${slskd_status['error']}</p>
+			% else:
+				<table class="health-table">
+					<tr>
+						<td>Connection</td>
+						<td class="${'health-good' if slskd_status.get('isConnected') else 'health-bad'}">
+							${slskd_status.get('state', 'Unknown')}
+						</td>
+					</tr>
+				</table>
+			% endif
+		</div>
+
+		<div class="health-card">
+			<h3>Soulseek Downloads</h3>
+			<table class="health-table">
+				<tr><td>Currently "Snatched"</td><td>${snatched_count}</td></tr>
+				<tr class="${'health-warn' if stuck_count else ''}">
+					<td>Stuck &gt; ${stuck_days} days</td>
+					<td>
+						${stuck_count}
+						% if stuck_count:
+							(will reset to Wanted on the next Download Scan)
+						% endif
+					</td>
+				</tr>
+			</table>
+		</div>
+
+		<div class="health-card">
+			<h3>Recent Log Activity</h3>
+			<table class="health-table">
+				<tr class="${'health-warn' if error_count > 20 else ''}">
+					<td>Errors (last ~2000 lines)</td>
+					<td>${error_count}</td>
+				</tr>
+			</table>
+			<p class="health-note"><a href="logs">View full logs</a></p>
+		</div>
+	</div>
+</%def>
+
+<%def name="headIncludes()">
+	<style>
+		.health-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+			gap: 16px;
+			margin-top: 15px;
+		}
+		.health-card {
+			border: 1px solid #ddd;
+			border-radius: 6px;
+			padding: 14px 16px;
+			background: #fff;
+		}
+		.health-card h3 { margin: 0 0 10px; font-size: 15px; }
+		.health-table { width: 100%; border-collapse: collapse; }
+		.health-table td { padding: 4px 0; font-size: 13px; }
+		.health-table td:first-child { color: #666; }
+		.health-table td:last-child { text-align: right; font-weight: bold; }
+		.health-note { font-size: 12px; color: #888; margin: 10px 0 0; }
+		.health-good { color: #2e7d32; }
+		.health-bad { color: #c62828; }
+		.health-warn td { color: #b26a00 !important; }
+	</style>
+</%def>

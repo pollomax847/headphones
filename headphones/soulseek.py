@@ -289,6 +289,9 @@ def active_downloads():
                     'completed': 0,
                     'errored': 0,
                     'size': 0,
+                    'bytes_transferred': 0,
+                    'bytes_remaining': 0,
+                    'speed': 0,
                 }
 
             release = releases[key]
@@ -302,6 +305,13 @@ def active_downloads():
                     release['completed'] += 1
                 elif 'Completed, Errored' in state or 'Cancelled' in state or 'Rejected' in state:
                     release['errored'] += 1
+                else:
+                    # Only count bytes/speed for files still actually
+                    # moving -- a finished file's own bytesRemaining is
+                    # already 0, and a dead one shouldn't count toward ETA.
+                    release['bytes_transferred'] += file_data.get('bytesTransferred', 0) or 0
+                    release['bytes_remaining'] += file_data.get('bytesRemaining', 0) or 0
+                    release['speed'] += file_data.get('averageSpeed', 0) or 0
 
     result = []
     for release in releases.values():
@@ -313,6 +323,10 @@ def active_downloads():
             release['overall_status'] = 'Finished'
         else:
             release['overall_status'] = 'Downloading'
+
+        # ETA in seconds for whatever's still actively transferring, based
+        # on current combined speed across that release's in-flight files.
+        release['eta_seconds'] = int(release['bytes_remaining'] / release['speed']) if release['speed'] else None
 
         result.append(release)
 

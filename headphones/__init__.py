@@ -276,7 +276,7 @@ def initialize_scheduler():
     """
 
     from headphones import updater, searcher, librarysync, postprocessor, \
-        torrentfinished
+        torrentfinished, db
 
     with SCHED_LOCK:
 
@@ -292,6 +292,11 @@ def initialize_scheduler():
 
         hours = CONFIG.LIBRARYSCAN_INTERVAL
         schedule_job(librarysync.libraryScan, 'Library Scan', hours=hours, minutes=0)
+
+        # Keeps the WAL file from growing unbounded under sustained write
+        # load -- see db.checkpoint_wal(). Not tied to a config option,
+        # this one's cheap and safe enough to just always run.
+        schedule_job(db.checkpoint_wal, 'Database Maintenance', hours=6, minutes=0)
 
         hours = CONFIG.UPDATE_DB_INTERVAL
         schedule_job(updater.dbUpdate, 'MusicBrainz Update', hours=hours, minutes=0)

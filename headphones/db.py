@@ -40,6 +40,45 @@ def getCacheSize():
     return int(headphones.CONFIG.CACHE_SIZEMB)
 
 
+def checkpoint_wal():
+    # In WAL mode the .db-wal file only ever gets folded back into the main
+    # file on its own once it crosses SQLite's default auto-checkpoint size
+    # (1000 pages, a few MB) -- under sustained write load (constant
+    # searching/snatching/postprocessing) it can outrun that and grow to
+    # multiple GB, which is exactly what made this instance's startup take
+    # minutes and made ordinary requests time out. TRUNCATE checkpoints and
+    # shrinks the WAL file back down; unlike VACUUM it doesn't rewrite the
+    # whole database or hold an exclusive lock for more than the time it
+    # takes to flush pending writes, so it's safe to run on a schedule.
+    myDB = DBConnection()
+    try:
+        result = myDB.action("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        busy, log_pages, checkpointed_pages = result[0], result[1], result[2]
+
+        if busy:
+            logger.debug(
+                "WAL checkpoint deferred (database busy): %d of %d pages checkpointed",
+                checkpointed_pages, log_pages
+            )
+        else:
+            logger.info(
+                "WAL checkpoint complete: %d pages folded back into the database", checkpointed_pages
+            )
+    except Exception as e:
+        logger.warn("WAL checkpoint failed: %s", e)
+
+
+def get_db_file_sizes():
+    """Returns (main db size, wal file size) in bytes, either 0 if missing."""
+    db_path = dbFilename()
+    wal_path = db_path + "-wal"
+
+    db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+    wal_size = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
+
+    return db_size, wal_size
+
+
 class DBConnection:
     def __init__(self, filename="headphones.db"):
 

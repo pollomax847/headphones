@@ -1010,15 +1010,19 @@ class WebInterface(object):
                 'ArtistName': row['ArtistName'],
                 'DateAdded': row['DateAdded'],
                 # The status shown to the user (and used for cleanup) is
-                # whatever Nicotine+ currently reports when it's tracking
-                # the release live; the DB's own Status column (set by
+                # whatever slskd currently reports when it's tracking the
+                # release live; the DB's own Status column (set by
                 # postprocessor.checkFolder on its own schedule) is only a
-                # fallback for releases Nicotine+ isn't tracking anymore.
+                # fallback for releases slskd isn't tracking anymore.
                 'overall_status': live['overall_status'] if live else row['SnatchedStatus'],
                 'completed': live['completed'] if live else 0,
                 'total': live['total'] if live else 0,
                 'errored': live['errored'] if live else 0,
                 'size': live['size'] if live else 0,
+                'bytes_transferred': live['bytes_transferred'] if live else 0,
+                'bytes_remaining': live['bytes_remaining'] if live else 0,
+                'speed': live['speed'] if live else 0,
+                'eta_seconds': live['eta_seconds'] if live else None,
             })
 
         return activity
@@ -1056,8 +1060,8 @@ class WebInterface(object):
         elif type == 'errored':
             # Status='Unprocessed' only covers releases postprocessor has
             # already caught up with; most rows showing as errored on the
-            # page are live Nicotine+ failures the DB doesn't know about
-            # yet, so recompute the same status the page displays.
+            # page are live slskd failures the DB doesn't know about yet,
+            # so recompute the same status the page displays.
             activity = self._soulseek_download_activity(myDB)
             errored_album_ids = {release['AlbumID'] for release in activity if release['overall_status'] == 'Errored'}
             logger.info("Clearing %d errored Soulseek downloads", len(errored_album_ids))
@@ -1067,6 +1071,53 @@ class WebInterface(object):
             myDB.action("DELETE FROM snatched WHERE Kind='soulseek' AND Status='Unprocessed'")
 
         raise cherrypy.HTTPRedirect("downloads")
+
+    @cherrypy.expose
+    def health(self):
+        from headphones import postprocessor
+
+        myDB = db.DBConnection()
+        db_size, wal_size = db.get_db_file_sizes()
+
+        slskd_status = None
+        if headphones.CONFIG.SOULSEEK:
+            try:
+                client = soulseek.initialize_soulseek_client()
+                slskd_status = client.server.state()
+            except Exception as e:
+                slskd_status = {'error': str(e)}
+
+        snatched_count = myDB.select(
+            "SELECT COUNT(*) as c FROM snatched WHERE Kind='soulseek' AND Status='Snatched'"
+        )[0]['c']
+
+        stuck_count = myDB.select(
+            "SELECT COUNT(*) as c FROM snatched WHERE Kind='soulseek' AND Status='Snatched' "
+            "AND DateAdded < datetime('now', ?)",
+            ['-%d days' % postprocessor.STUCK_SOULSEEK_DAYS]
+        )[0]['c']
+
+        error_count = 0
+        try:
+            log_path = os.path.join(headphones.CONFIG.LOG_DIR, 'headphones.log')
+            with open(log_path, encoding='utf-8', errors='replace') as f:
+                recent_lines = f.readlines()[-2000:]
+            error_count = sum(1 for line in recent_lines if '- ERROR' in line)
+        except OSError:
+            pass
+
+        return serve_template(
+            templatename="health.html", title="Health",
+            db_size=db_size, wal_size=wal_size, slskd_status=slskd_status,
+            snatched_count=snatched_count, stuck_count=stuck_count,
+            stuck_days=postprocessor.STUCK_SOULSEEK_DAYS, error_count=error_count,
+            soulseek_enabled=headphones.CONFIG.SOULSEEK,
+        )
+
+    @cherrypy.expose
+    def checkpointDatabase(self):
+        db.checkpoint_wal()
+        raise cherrypy.HTTPRedirect("health")
 
     @cherrypy.expose
     def logs(self):

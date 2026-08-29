@@ -18,6 +18,8 @@ import uuid
 import threading
 import itertools
 
+from datetime import datetime, timedelta
+
 import os
 import re
 import beets
@@ -33,6 +35,14 @@ from headphones import logger, helpers, mb, music_encoder
 from headphones import metadata
 
 postprocessor_lock = threading.Lock()
+
+# A Soulseek download that's neither completed nor errored after this long
+# has no live tracking to ever resolve it either way -- slskd restarted,
+# lost the transfer, whatever. Left alone it stays "Snatched" forever with
+# nothing rechecking it (this is exactly what happened to ~30 albums before
+# a one-off manual DB fix). Reset it back to Wanted so the normal search
+# cycle picks it up again instead.
+STUCK_SOULSEEK_DAYS = 3
 
 
 def checkFolder():
@@ -70,6 +80,21 @@ def checkFolder():
                     elif completed:
                         download_dir = headphones.CONFIG.SOULSEEK_DOWNLOAD_DIR
                     else:
+                        try:
+                            added = datetime.strptime(album['DateAdded'], '%Y-%m-%d %H:%M:%S')
+                        except (TypeError, ValueError):
+                            continue
+
+                        if datetime.now() - added < timedelta(days=STUCK_SOULSEEK_DAYS):
+                            continue
+
+                        logger.info(
+                            f"Soulseek: Album with folder '{folder_name}' has had no progress in "
+                            f"over {STUCK_SOULSEEK_DAYS} days, no source is tracking it anymore. "
+                            f"Setting status to 'Wanted'."
+                        )
+                        myDB.action('UPDATE albums SET Status="Wanted" WHERE AlbumID=? AND Status="Snatched"', (album['AlbumID'],))
+                        myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=?', (album['AlbumID'],))
                         continue
                 elif album['Kind'] == 'nzb':
                     download_dir = headphones.CONFIG.DOWNLOAD_DIR   
