@@ -22,8 +22,25 @@
 <%def name="headIncludes()">
 	<link rel="stylesheet" href="interfaces/default/css/data_table.css">
 	<style>
-		#artist_table img.albumArt {
+		/* Same fix as the artist page: the shared .albumArt class sizes
+		   itself with min/max-width/height, not a fixed square, so
+		   rounding the <img> directly renders an oval on non-square source
+		   photos. Force both the wrapping div and the image itself to a
+		   real 50x50 square and clip there instead. */
+		#artist_table #artistImg {
+			width: 50px;
+			height: 50px;
+			overflow: hidden;
 			border-radius: 50%;
+			display: inline-block;
+		}
+		#artist_table #artistImg img.albumArt {
+			width: 50px;
+			height: 50px;
+			min-width: 50px;
+			min-height: 50px;
+			max-width: 50px;
+			max-height: 50px;
 			object-fit: cover;
 		}
 	</style>
