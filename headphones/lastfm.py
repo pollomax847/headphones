@@ -13,7 +13,6 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Headphones.  If not, see <http://www.gnu.org/licenses/>.
 
-import random
 from collections import defaultdict
 
 import headphones
@@ -88,8 +87,16 @@ def getSimilar():
                 except KeyError:
                     continue
 
-                if not any(artist_mbid in x for x in results):
-                    artistlist.append((artist_name, artist_mbid))
+                if any(artist_mbid in x for x in results):
+                    continue
+
+                if myDB.action('SELECT * FROM blacklist WHERE ArtistID=?', [artist_mbid]).fetchone():
+                    # Deliberately deleted before -- don't resurrect it as
+                    # a suggestion just because it's similar to something
+                    # still in the library.
+                    continue
+
+                artistlist.append((artist_name, artist_mbid))
 
     # Add new artists to tag cloud
     logger.debug("Fetched %d artists from Last.fm", len(artistlist))
@@ -100,8 +107,6 @@ def getSimilar():
 
     items = list(count.items())
     top_list = sorted(items, key=lambda x: x[1], reverse=True)[:25]
-
-    random.shuffle(top_list)
 
     myDB.action("DELETE from lastfmcloud")
     for item in top_list:

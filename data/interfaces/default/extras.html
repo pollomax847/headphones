@@ -3,7 +3,7 @@
 <%def name="headerIncludes()">
 	<div id="subhead_container">
 		<div id="subhead_menu">
-			<a id="menu_link_refresh" href="updateCloud" title="Rebuild this list from your top artists"><i class="fa fa-refresh"></i> Refresh Suggestions</a>
+			<a id="menu_link_refresh" href="javascript:void(0)" onclick="doAjaxCall('updateCloud', $(this), 'page')" title="Rebuild this list from your top artists"><i class="fa fa-refresh"></i> Refresh Suggestions</a>
 		</div>
 	</div>
 </%def>
