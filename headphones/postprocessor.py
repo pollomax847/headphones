@@ -44,6 +44,46 @@ postprocessor_lock = threading.Lock()
 # cycle picks it up again instead.
 STUCK_SOULSEEK_DAYS = 3
 
+# When a Soulseek snatch turns up errored files, try one fresh search
+# before giving up on it -- most of the time a different peer (or even a
+# different provider entirely, per PREFER_TORRENTS) has the same album.
+# This cooldown just stops a genuinely source-less album from getting a
+# brand new search kicked off on every single Download Scan cycle.
+_alt_source_attempts = {}  # AlbumID -> datetime of last retry
+ALT_SOURCE_COOLDOWN = timedelta(hours=1)
+
+
+def _try_alternative_source(album_id):
+    """
+    Kicks off one fresh searcher.searchforalbum() for this specific album,
+    right now, instead of waiting for the next generic "Search for Wanted"
+    pass. Reuses the exact same search-and-snatch pipeline every other
+    search already goes through -- no separate peer-matching logic to
+    maintain. Returns True if it actually found and snatched something.
+    """
+    last_attempt = _alt_source_attempts.get(album_id)
+    if last_attempt and datetime.now() - last_attempt < ALT_SOURCE_COOLDOWN:
+        return False
+
+    _alt_source_attempts[album_id] = datetime.now()
+
+    myDB = db.DBConnection()
+    # albums.Status is already "Snatched" going in (that's why we're
+    # looking at it) so it can't tell us whether this particular retry
+    # did anything -- but send_to_downloader() always INSERTs a fresh
+    # row into snatched on success, so a row count bump does.
+    before = myDB.action('SELECT COUNT(*) as c FROM snatched WHERE AlbumID=?', [album_id]).fetchone()['c']
+
+    try:
+        from headphones import searcher
+        searcher.searchforalbum(albumid=album_id)
+    except Exception as e:
+        logger.debug(f"Alternative-source search failed for {album_id}: {e}")
+        return False
+
+    after = myDB.action('SELECT COUNT(*) as c FROM snatched WHERE AlbumID=?', [album_id]).fetchone()['c']
+    return after > before
+
 
 def checkFolder():
     logger.info("Checking download folder for completed downloads (only snatched ones).")
@@ -63,11 +103,25 @@ def checkFolder():
                     folder_name = match.group(2)
                     completed, errored = soulseek.download_completed_album(user_name, folder_name)
                     if errored:
-                        # If the album had any tracks with errors in it, the whole download is considered faulty. Status will be reset to wanted.
-                        logger.info(f"Soulseek: Album with folder '{folder_name}' had errors during download. Setting status to 'Wanted'.")
-                        myDB.action('UPDATE albums SET Status="Wanted" WHERE AlbumID=? AND Status="Snatched"', (album['AlbumID'],))
-                        myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=?', (album['AlbumID'],))
-                        
+                        # The dead source's own transfer records are
+                        # already cancelled/removed by
+                        # download_completed_album() above -- try once for
+                        # a fresh source (any provider, not just Soulseek)
+                        # before falling back to a bare Wanted reset that
+                        # just waits for the next generic search cycle.
+                        if _try_alternative_source(album['AlbumID']):
+                            logger.info(
+                                f"Soulseek: Album with folder '{folder_name}' had errors during "
+                                f"download; found and snatched an alternative source instead of "
+                                f"resetting to Wanted."
+                            )
+                            myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=? AND Kind="soulseek"', (album['AlbumID'],))
+                        else:
+                            # If the album had any tracks with errors in it, the whole download is considered faulty. Status will be reset to wanted.
+                            logger.info(f"Soulseek: Album with folder '{folder_name}' had errors during download. Setting status to 'Wanted'.")
+                            myDB.action('UPDATE albums SET Status="Wanted" WHERE AlbumID=? AND Status="Snatched"', (album['AlbumID'],))
+                            myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=?', (album['AlbumID'],))
+
                         # Folder will be removed from configured complete and Incomplete directory
                         complete_path = os.path.join(headphones.CONFIG.SOULSEEK_DOWNLOAD_DIR, folder_name)
                         incomplete_path = os.path.join(headphones.CONFIG.SOULSEEK_INCOMPLETE_DOWNLOAD_DIR, folder_name)
