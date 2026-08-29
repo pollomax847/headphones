@@ -1,5 +1,6 @@
 from collections import defaultdict, namedtuple
 from datetime import datetime, timedelta
+import configparser
 import os
 import time
 
@@ -29,9 +30,40 @@ def _folder_name_from_directory(directory):
     return directory.split('\\')[-1] if directory else directory
 
 
+def _own_usernames(client):
+    """Soulseek identities that are actually us, so we never pick a search
+    result shared by ourselves as the "best" download candidate. slskd 500s
+    when asked to download from a peer that turns out to be its own session
+    (seen in practice with a second, manual Soulseek client - e.g. Nicotine+
+    - sharing the same local library under a different login), and doing so
+    is pointless anyway since we already have the files."""
+    names = set()
+
+    try:
+        own = client.application.state().get('user', {}).get('username')
+        if own:
+            names.add(own)
+    except Exception as e:
+        logger.debug(f"Could not determine slskd's own username: {e}")
+
+    nicotine_config = os.path.expanduser('~/.config/nicotine/config')
+    if os.path.isfile(nicotine_config):
+        try:
+            parser = configparser.ConfigParser(interpolation=None)
+            parser.read(nicotine_config, encoding='utf-8')
+            login = parser.get('server', 'login', fallback=None)
+            if login:
+                names.add(login)
+        except Exception as e:
+            logger.debug(f"Could not read Nicotine+ config: {e}")
+
+    return names
+
+
 # Search logic, calling search and processing fucntions
 def search(artist, album, year, num_tracks, losslessOnly, allow_lossless, user_search_term):
     client = initialize_soulseek_client()
+    exclude_users = _own_usernames(client)
 
     # override search string with user provided search term if entered
     if user_search_term:
@@ -42,21 +74,21 @@ def search(artist, album, year, num_tracks, losslessOnly, allow_lossless, user_s
     # Stage 1: Search with artist, album, year, and num_tracks
     logger.info(f"Searching Soulseek using term: {artist} {album} {year}")
     results = execute_search(client, artist, album, year, losslessOnly, allow_lossless)
-    processed_results = process_results(results, losslessOnly, allow_lossless, num_tracks)
+    processed_results = process_results(results, losslessOnly, allow_lossless, num_tracks, exclude_users=exclude_users)
     if processed_results or user_search_term or album.lower() == artist.lower():
         return processed_results
 
     # Stage 2: If Stage 1 fails, search with artist, album, and num_tracks (excluding year)
     logger.info("Soulseek search stage 1 did not meet criteria. Retrying without year...")
     results = execute_search(client, artist, album, None, losslessOnly, allow_lossless)
-    processed_results = process_results(results, losslessOnly, allow_lossless, num_tracks)
+    processed_results = process_results(results, losslessOnly, allow_lossless, num_tracks, exclude_users=exclude_users)
     if processed_results or artist == "Various Artists":
         return processed_results
 
     # Stage 3: Final attempt, search only with artist and album
     logger.info("Soulseek search stage 2 did not meet criteria. Final attempt with only artist and album.")
     results = execute_search(client, artist, album, None, losslessOnly, allow_lossless)
-    processed_results = process_results(results, losslessOnly, allow_lossless, num_tracks, ignore_track_count=True)
+    processed_results = process_results(results, losslessOnly, allow_lossless, num_tracks, ignore_track_count=True, exclude_users=exclude_users)
 
     return processed_results
 
@@ -81,7 +113,7 @@ def execute_search(client, artist, album, year, losslessOnly, allow_lossless):
     return client.searches.search_responses(id=search_id)
 
 # Processing the search result passed
-def process_results(results, losslessOnly, allow_lossless, num_tracks, ignore_track_count=False):
+def process_results(results, losslessOnly, allow_lossless, num_tracks, ignore_track_count=False, exclude_users=None):
 
     if losslessOnly:
         valid_extensions = {'.flac'}
@@ -90,11 +122,15 @@ def process_results(results, losslessOnly, allow_lossless, num_tracks, ignore_tr
     else:
         valid_extensions = {'.mp3'}
 
+    exclude_users = exclude_users or set()
+
     albums = defaultdict(lambda: {'files': [], 'user': None, 'hasFreeUploadSlot': None, 'queueLength': None, 'uploadSpeed': None})
 
     # Extract info from the api response and combine files at album level
     for result in results:
         user = result.get('username')
+        if user in exclude_users:
+            continue
         hasFreeUploadSlot = result.get('hasFreeUploadSlot')
         queueLength = result.get('queueLength')
         uploadSpeed = result.get('uploadSpeed')
