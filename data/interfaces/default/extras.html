@@ -72,12 +72,6 @@
 			var id = img.attr("id").replace("cloud-", "");
 
 			getImageLinks(img, id, "artist");
-
-			$.getJSON("getFaceCropHint?ArtistID=" + encodeURIComponent(id), function(hint) {
-				if (hint && hint.y !== null && hint.y !== undefined) {
-					img.css("object-position", "center " + hint.y + "%");
-				}
-			});
 		});
 	});
 	</script>
