@@ -669,6 +669,10 @@ def doPostProcessing(albumid, albumpath, release, tracks, downloaded_track_list,
             plex.update()
         if headphones.CONFIG.PLEX_NOTIFY:
             plex.notify(release['ArtistName'],
+    if headphones.CONFIG.NAVIDROME_ENABLED:
+        navidrome = notifiers.Navidrome()
+        navidrome.update()
+
                         release['AlbumTitle'],
                         album_art_path)
 

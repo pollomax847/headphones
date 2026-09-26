@@ -462,6 +462,38 @@ class Plex(object):
                     host)
 
 
+class Navidrome(object):
+    def __init__(self):
+        self.host = headphones.CONFIG.NAVIDROME_HOST.rstrip('/')
+        self.username = headphones.CONFIG.NAVIDROME_USERNAME
+        self.password = headphones.CONFIG.NAVIDROME_PASSWORD
+
+    def update(self):
+        if not self.host or not self.username:
+            logger.warn("Navidrome host/username not configured, skipping scan request")
+            return False
+
+        url = "%s/rest/startScan" % self.host
+        params = {
+            'u': self.username,
+            'p': self.password,
+            'v': '1.16.1',
+            'c': 'headphones',
+            'f': 'json'
+        }
+
+        logger.info("Sending library scan request to Navidrome @ " + self.host)
+
+        response = request.request_json(url, params=params)
+        status = response.get('subsonic-response', {}).get('status') if response else None
+
+        if status != 'ok':
+            logger.error("Error sending scan request to Navidrome, check settings (host/username/password)")
+            return False
+
+        return True
+
+
 class NMA(object):
     def notify(self, artist=None, album=None, snatched=None):
         title = 'Headphones'

@@ -1204,6 +1204,26 @@
 
                             <fieldset>
                                 <div class="row checkbox left">
+                                    <input type="checkbox" class="bigcheck" name="navidrome_enabled" id="navidrome" value="1" ${config['navidrome_enabled']} /><label for="navidrome"><span class="option">Navidrome</span></label>
+                                </div>
+                                <div id="navidromeoptions">
+                                    <div class="row">
+                                        <label>Navidrome Host:Port</label>
+                                        <input type="text" name="navidrome_host" value="${config['navidrome_host']}" size="30">
+                                        <small>Host running Navidrome (eg. http://192.168.1.100:4533)</small>
+                                    </div>
+                                    <div class="row">
+                                        <label>Navidrome Username</label><input type="text" name="navidrome_username" value="${config['navidrome_username']}" size="30">
+                                    </div>
+                                    <div class="row">
+                                        <label>Navidrome Password</label><input type="password" name="navidrome_password" value="${config['navidrome_password'] | h}" size="30">
+                                    </div>
+                                    <small>Triggers an immediate library scan on Navidrome after each successful download</small>
+                                </div>
+                            </fieldset>
+
+                            <fieldset>
+                                <div class="row checkbox left">
                                     <input type="checkbox" class="bigcheck" name="prowl_enabled" id="prowl" value="1" ${config['prowl_enabled']} /><label for="prowl"><span class="option">Prowl</span></label>
                                 </div>
                                 <div id="prowloptions">
@@ -2097,6 +2117,26 @@
                         else
                         {
                             $("#plexoptions").slideUp();
+                        }
+                });
+
+                if ($("#navidrome").is(":checked"))
+                        {
+                            $("#navidromeoptions").show();
+                        }
+                else
+                        {
+                            $("#navidromeoptions").hide();
+                        }
+
+                $("#navidrome").click(function(){
+                        if ($("#navidrome").is(":checked"))
+                        {
+                            $("#navidromeoptions").slideDown();
+                        }
+                        else
+                        {
+                            $("#navidromeoptions").slideUp();
                         }
                 });
 
