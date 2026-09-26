@@ -74,7 +74,7 @@ class qbittorrentclient(object):
 
     def _get_sid(self, base_url, username, password):
         # login so we can capture SID cookie
-        login_data = urllib.parse.urlencode({'username': username, 'password': password})
+        login_data = urllib.parse.urlencode({'username': username, 'password': password}).encode()
         try:
             self.opener.open(base_url + '/login', login_data)
         except urllib.error.URLError as err:

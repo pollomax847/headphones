@@ -17,6 +17,7 @@
 
 import os
 import re
+import socket
 import string
 import random
 import urllib.request, urllib.parse, urllib.error
@@ -266,7 +267,12 @@ def searchforalbum(albumid=None, new=False, losslessOnly=False,
 
             logger.info('Searching for "%s - %s" since it is marked as wanted' % (
                 album['ArtistName'], album['AlbumTitle']))
-            do_sorted_search(album, new, losslessOnly)
+            try:
+                do_sorted_search(album, new, losslessOnly)
+            except Exception as e:
+                # One bad album (client down, odd indexer reply...) must not abort the whole pass
+                logger.error('Search failed for "%s - %s": %s' % (
+                    album['ArtistName'], album['AlbumTitle'], e))
 
     elif albumid and choose_specific_download:
         album = myDB.action('SELECT * from albums WHERE AlbumID=?', [albumid]).fetchone()
@@ -303,6 +309,23 @@ def strptime_musicbrainz(date_str):
     return None
 
 
+def torrent_client_available():
+    """False when qBittorrent is unreachable. It runs behind the VPN and is stopped whenever the
+    VPN is down, so there is no point picking a torrent we cannot hand over."""
+    if headphones.CONFIG.TORRENT_DOWNLOADER != 4:
+        return True
+
+    host = headphones.CONFIG.QBITTORRENT_HOST
+    if not host.startswith('http'):
+        host = 'http://' + host
+    url = urllib.parse.urlparse(host)
+    try:
+        with socket.create_connection((url.hostname, url.port or 80), timeout=3):
+            return True
+    except OSError:
+        return False
+
+
 def do_sorted_search(album, new, losslessOnly, choose_specific_download=False):
 
 
@@ -320,6 +343,10 @@ def do_sorted_search(album, new, losslessOnly, choose_specific_download=False):
                          headphones.CONFIG.RUTRACKER or
                          headphones.CONFIG.ORPHEUS or
                          headphones.CONFIG.REDACTED)
+
+    if TORRENT_PROVIDERS and not choose_specific_download and not torrent_client_available():
+        logger.debug('Torrent client unreachable, not searching torrent providers')
+        TORRENT_PROVIDERS = False
 
     BANDCAMP = 1 if (headphones.CONFIG.BANDCAMP and
                      headphones.CONFIG.BANDCAMP_DIR) else 0
