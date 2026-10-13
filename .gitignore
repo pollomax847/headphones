@@ -71,3 +71,4 @@ _ReSharper*/
 
 # Python virtual env
 venv
+.venv

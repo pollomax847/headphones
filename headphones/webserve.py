@@ -1094,8 +1094,7 @@ class WebInterface(object):
         slskd_status = None
         if headphones.CONFIG.SOULSEEK:
             try:
-                client = soulseek.initialize_soulseek_client()
-                slskd_status = client.server.state()
+                slskd_status = soulseek.server_state()
             except Exception as e:
                 slskd_status = {'error': str(e)}
 
@@ -1532,11 +1531,11 @@ class WebInterface(object):
             "plex_password": headphones.CONFIG.PLEX_PASSWORD,
             "plex_token": headphones.CONFIG.PLEX_TOKEN,
             "plex_update": checked(headphones.CONFIG.PLEX_UPDATE),
+            "plex_notify": checked(headphones.CONFIG.PLEX_NOTIFY),
             "navidrome_enabled": checked(headphones.CONFIG.NAVIDROME_ENABLED),
             "navidrome_host": headphones.CONFIG.NAVIDROME_HOST,
             "navidrome_username": headphones.CONFIG.NAVIDROME_USERNAME,
             "navidrome_password": headphones.CONFIG.NAVIDROME_PASSWORD,
-            "plex_notify": checked(headphones.CONFIG.PLEX_NOTIFY),
             "nma_enabled": checked(headphones.CONFIG.NMA_ENABLED),
             "nma_apikey": headphones.CONFIG.NMA_APIKEY,
             "nma_priority": int(headphones.CONFIG.NMA_PRIORITY),
