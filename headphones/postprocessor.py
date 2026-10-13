@@ -92,94 +92,101 @@ def checkFolder():
         myDB = db.DBConnection()
         snatched = myDB.select('SELECT * from snatched WHERE Status="Snatched"')
         for album in snatched:
-            if album['FolderName']:
-                folder_name = album['FolderName']
-                single = False
+            try:
+                if album['FolderName']:
+                    folder_name = album['FolderName']
+                    single = False
 
-                # Soulseek, check download complete or errored
-                if album['Kind'] == 'soulseek':
-                    match = re.search(r'\{(.*?)\}(.*?)$', folder_name)    # get soulseek user from folder_name
-                    user_name = match.group(1)
-                    folder_name = match.group(2)
-                    completed, errored = soulseek.download_completed_album(user_name, folder_name)
-                    if errored:
-                        # The dead source's own transfer records are
-                        # already cancelled/removed by
-                        # download_completed_album() above -- try once for
-                        # a fresh source (any provider, not just Soulseek)
-                        # before falling back to a bare Wanted reset that
-                        # just waits for the next generic search cycle.
-                        if _try_alternative_source(album['AlbumID']):
-                            logger.info(
-                                f"Soulseek: Album with folder '{folder_name}' had errors during "
-                                f"download; found and snatched an alternative source instead of "
-                                f"resetting to Wanted."
-                            )
-                            myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=? AND Kind="soulseek"', (album['AlbumID'],))
+                    # Soulseek, check download complete or errored
+                    if album['Kind'] == 'soulseek':
+                        match = re.search(r'\{(.*?)\}(.*?)$', folder_name)    # get soulseek user from folder_name
+                        user_name = match.group(1)
+                        folder_name = match.group(2)
+                        completed, errored = soulseek.download_completed_album(user_name, folder_name)
+                        if errored:
+                            # The dead source's own transfer records are
+                            # already cancelled/removed by
+                            # download_completed_album() above -- try once for
+                            # a fresh source (any provider, not just Soulseek)
+                            # before falling back to a bare Wanted reset that
+                            # just waits for the next generic search cycle.
+                            if _try_alternative_source(album['AlbumID']):
+                                logger.info(
+                                    f"Soulseek: Album with folder '{folder_name}' had errors during "
+                                    f"download; found and snatched an alternative source instead of "
+                                    f"resetting to Wanted."
+                                )
+                                myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=? AND Kind="soulseek"', (album['AlbumID'],))
+                            else:
+                                # If the album had any tracks with errors in it, the whole download is considered faulty. Status will be reset to wanted.
+                                logger.info(f"Soulseek: Album with folder '{folder_name}' had errors during download. Setting status to 'Wanted'.")
+                                myDB.action('UPDATE albums SET Status="Wanted" WHERE AlbumID=? AND Status="Snatched"', (album['AlbumID'],))
+                                myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=?', (album['AlbumID'],))
+
+                            # Folder will be removed from configured complete and Incomplete directory
+                            complete_path = os.path.join(headphones.CONFIG.SOULSEEK_DOWNLOAD_DIR, folder_name)
+                            incomplete_path = os.path.join(headphones.CONFIG.SOULSEEK_INCOMPLETE_DOWNLOAD_DIR, folder_name)
+                            for path in [complete_path, incomplete_path]:
+                                try:
+                                    shutil.rmtree(path)
+                                except Exception as e:
+                                    pass
+                            continue
+                        elif completed:
+                            download_dir = headphones.CONFIG.SOULSEEK_DOWNLOAD_DIR
                         else:
-                            # If the album had any tracks with errors in it, the whole download is considered faulty. Status will be reset to wanted.
-                            logger.info(f"Soulseek: Album with folder '{folder_name}' had errors during download. Setting status to 'Wanted'.")
+                            try:
+                                added = datetime.strptime(album['DateAdded'], '%Y-%m-%d %H:%M:%S')
+                            except (TypeError, ValueError):
+                                continue
+
+                            if datetime.now() - added < timedelta(days=STUCK_SOULSEEK_DAYS):
+                                continue
+
+                            logger.info(
+                                f"Soulseek: Album with folder '{folder_name}' has had no progress in "
+                                f"over {STUCK_SOULSEEK_DAYS} days, no source is tracking it anymore. "
+                                f"Setting status to 'Wanted'."
+                            )
                             myDB.action('UPDATE albums SET Status="Wanted" WHERE AlbumID=? AND Status="Snatched"', (album['AlbumID'],))
                             myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=?', (album['AlbumID'],))
-
-                        # Folder will be removed from configured complete and Incomplete directory
-                        complete_path = os.path.join(headphones.CONFIG.SOULSEEK_DOWNLOAD_DIR, folder_name)
-                        incomplete_path = os.path.join(headphones.CONFIG.SOULSEEK_INCOMPLETE_DOWNLOAD_DIR, folder_name)
-                        for path in [complete_path, incomplete_path]:
-                            try:
-                                shutil.rmtree(path)
-                            except Exception as e:
-                                pass
-                        continue
-                    elif completed:
-                        download_dir = headphones.CONFIG.SOULSEEK_DOWNLOAD_DIR
+                            continue
+                    elif album['Kind'] == 'nzb':
+                        download_dir = headphones.CONFIG.DOWNLOAD_DIR   
+                    elif album['Kind'] == 'bandcamp':
+                        download_dir = headphones.CONFIG.BANDCAMP_DIR 
                     else:
-                        try:
-                            added = datetime.strptime(album['DateAdded'], '%Y-%m-%d %H:%M:%S')
-                        except (TypeError, ValueError):
-                            continue
+                        if headphones.CONFIG.DELUGE_DONE_DIRECTORY and headphones.CONFIG.TORRENT_DOWNLOADER == 3:
+                            download_dir = headphones.CONFIG.DELUGE_DONE_DIRECTORY
+                        else:
+                            download_dir = headphones.CONFIG.DOWNLOAD_TORRENT_DIR
 
-                        if datetime.now() - added < timedelta(days=STUCK_SOULSEEK_DAYS):
-                            continue
+                        # Get folder from torrent hash
+                        if album['TorrentHash'] and headphones.CONFIG.TORRENT_DOWNLOADER:
+                            torrent_folder_name = None
+                            if headphones.CONFIG.TORRENT_DOWNLOADER == 1:
+                                torrent_folder_name, single = transmission.getFolder(album['TorrentHash'])
+                            elif headphones.CONFIG.TORRENT_DOWNLOADER == 4:
+                                torrent_folder_name, single = qbittorrent.getFolder(album['TorrentHash'])
+                            if torrent_folder_name:
+                                folder_name = torrent_folder_name
 
-                        logger.info(
-                            f"Soulseek: Album with folder '{folder_name}' has had no progress in "
-                            f"over {STUCK_SOULSEEK_DAYS} days, no source is tracking it anymore. "
-                            f"Setting status to 'Wanted'."
-                        )
-                        myDB.action('UPDATE albums SET Status="Wanted" WHERE AlbumID=? AND Status="Snatched"', (album['AlbumID'],))
-                        myDB.action('UPDATE snatched SET status = "Unprocessed" WHERE AlbumID=?', (album['AlbumID'],))
-                        continue
-                elif album['Kind'] == 'nzb':
-                    download_dir = headphones.CONFIG.DOWNLOAD_DIR   
-                elif album['Kind'] == 'bandcamp':
-                    download_dir = headphones.CONFIG.BANDCAMP_DIR 
+                    if folder_name:
+                        album_path = os.path.join(download_dir, folder_name)
+                        logger.debug("Checking if %s exists" % album_path)
+
+                        if os.path.exists(album_path):
+                            logger.info('Found "' + folder_name + '" in ' + album[
+                                'Kind'] + ' download folder. Verifying....')
+                            verify(album['AlbumID'], album_path, album['Kind'], single=single)
                 else:
-                    if headphones.CONFIG.DELUGE_DONE_DIRECTORY and headphones.CONFIG.TORRENT_DOWNLOADER == 3:
-                        download_dir = headphones.CONFIG.DELUGE_DONE_DIRECTORY
-                    else:
-                        download_dir = headphones.CONFIG.DOWNLOAD_TORRENT_DIR
-
-                    # Get folder from torrent hash
-                    if album['TorrentHash'] and headphones.CONFIG.TORRENT_DOWNLOADER:
-                        torrent_folder_name = None
-                        if headphones.CONFIG.TORRENT_DOWNLOADER == 1:
-                            torrent_folder_name, single = transmission.getFolder(album['TorrentHash'])
-                        elif headphones.CONFIG.TORRENT_DOWNLOADER == 4:
-                            torrent_folder_name, single = qbittorrent.getFolder(album['TorrentHash'])
-                        if torrent_folder_name:
-                            folder_name = torrent_folder_name
-
-                if folder_name:
-                    album_path = os.path.join(download_dir, folder_name)
-                    logger.debug("Checking if %s exists" % album_path)
-
-                    if os.path.exists(album_path):
-                        logger.info('Found "' + folder_name + '" in ' + album[
-                            'Kind'] + ' download folder. Verifying....')
-                        verify(album['AlbumID'], album_path, album['Kind'], single=single)
-            else:
-                logger.info("No folder name found for " + album['Title'])
+                    logger.info("No folder name found for " + album['Title'])
+            except Exception as e:
+                # One album choking postprocessing (Nicotine+ timeout, a torrent
+                # client hiccup...) must not stop the rest of the batch from
+                # being checked -- it used to silently kill the whole pass.
+                logger.error(
+                    "Error checking download for \"%s\": %s" % (album['Title'], e))
 
         # Soulseek downloads that have already resolved (succeeded, errored,
         # rejected, cancelled) otherwise sit in slskd's own history forever,
@@ -669,12 +676,12 @@ def doPostProcessing(albumid, albumpath, release, tracks, downloaded_track_list,
             plex.update()
         if headphones.CONFIG.PLEX_NOTIFY:
             plex.notify(release['ArtistName'],
+                        release['AlbumTitle'],
+                        album_art_path)
+
     if headphones.CONFIG.NAVIDROME_ENABLED:
         navidrome = notifiers.Navidrome()
         navidrome.update()
-
-                        release['AlbumTitle'],
-                        album_art_path)
 
     if headphones.CONFIG.NMA_ENABLED:
         nma = notifiers.NMA()
